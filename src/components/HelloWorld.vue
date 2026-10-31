@@ -332,7 +332,7 @@ export default {
   name: 'HelloWorld',
   data () {
     return {
-      loading: true, busy: false, productsLoading: false, session: null, profile: {}, inventoryTypes: [{value:'meat',label:'لحوم'},{value:'poultry',label:'دواجن'},{value:'burger',label:'برجر'},{value:'bread',label:'عيش ومخبوزات'},{value:'vegetable',label:'خضروات'},{value:'dairy',label:'ألبان وأجبان'},{value:'sauce',label:'صوصات'},{value:'spice',label:'توابل'},{value:'oil',label:'زيوت'},{value:'packaging',label:'تغليف'},{value:'cleaning',label:'نظافة'},{value:'other',label:'أخرى'}], inventoryDraft:{display_name:'',item_type:'other',unit:'كجم',min_quantity:0}, stockDraft:{inventory_item_id:'',movement_type:'purchase_receipt',quantity:0,unit_cost:0,notes:''}, recipeDraft:{product_id:'',inventory_item_id:'',quantity_per_unit:0}, inventoryRecipes:[], editingInventoryId:null,
+      loading: true, busy: false, productsLoading: false, session: null, profile: {}, inventoryTypes: [{value:'meat',label:'لحوم'},{value:'poultry',label:'دواجن'},{value:'burger',label:'برجر'},{value:'bread',label:'عيش ومخبوزات'},{value:'vegetable',label:'خضروات'},{value:'dairy',label:'ألبان وأجبان'},{value:'sauce',label:'صوصات'},{value:'spice',label:'توابل'},{value:'oil',label:'زيوت'},{value:'packaging',label:'تغليف'},{value:'cleaning',label:'نظافة'},{value:'other',label:'أخرى'}], inventoryDraft:{display_name:'',item_type:'other',unit:'كجم',min_quantity:0}, stockDraft:{inventory_item_id:'',movement_type:'purchase_receipt',quantity:0,unit_cost:0,notes:''}, recipeDraft:{product_id:'',inventory_item_id:'',quantity_per_unit:0}, inventoryRecipes:[], stockMovements:[], editingInventoryId:null,
       isEnglish: localStorage.getItem("somer-pos-language") === "en",
       staffModal: false, staffError: "", openShift: null, shiftHistory: [], shiftOpeningCash: 0, shiftClosingCash: 0, shiftNote: "", expenseAmount: 0, expenseReason: "", expensePayee: "", lastShiftReport: null, printerSettings: [], printJobs: [], staffForm: { display_name: "", email: "", password: "", role: "cashier" },
       page: 'cashier', mobileNav: false, login: { email: '', password: '' },
@@ -562,18 +562,22 @@ export default {
       if(error)this.notify('تعذر تحديث الموظف: '+error.message,'error');else{Object.assign(person,data);this.notify('تم تحديث بيانات الموظف')}
     },
     async loadInventory () {
-      const [{data,error},{data:recipes,error:recipeError}] = await Promise.all([
+      const [{data,error},{data:recipes,error:recipeError},{data:movements,error:movementError}] = await Promise.all([
         supabase.from('inventory_items').select('*').order('display_name'),
-        supabase.from('product_recipes').select('*').order('created_at')
+        supabase.from('product_recipes').select('*').order('created_at'),
+        supabase.from('stock_movements').select('*').order('created_at',{ascending:false}).limit(100)
       ])
       if(error){this.notify('تعذر تحميل المخزون: '+error.message,'error');return}
       if(recipeError){this.notify('تعذر تحميل وصفات المخزون: '+recipeError.message,'error');return}
-      this.inventory=data||[];this.inventoryRecipes=recipes||[]
+      if(movementError){this.notify('تعذر تحميل حركة المخزون: '+movementError.message,'error');return}
+      this.inventory=data||[];this.inventoryRecipes=recipes||[];this.stockMovements=movements||[]
     },
     inventoryTypeName(type){return this.inventoryTypes.find(x=>x.value===type)?.label||'أخرى'},
     inventoryName(id){return this.inventory.find(x=>x.id===id)?.display_name||'خامة'},
     inventoryUnit(id){return this.inventory.find(x=>x.id===id)?.unit||''},
     productName(id){return this.products.find(x=>x.id===id)?.name||'منتج'},
+    employeeName(id){if(id===this.session?.user?.id)return this.profile.display_name||'الموظف الحالي';return this.staff.find(x=>x.id===id)?.display_name||'موظف مسجل'},
+    stockMovementName(type){return ({opening_stock:'رصيد افتتاحي',purchase_receipt:'وارد / شراء',sale_consumption:'استهلاك أوردر',waste:'هالك / تالف',return:'مرتجع',adjustment:'تسوية جرد'})[type]||type},
     editInventoryItem(item){this.editingInventoryId=item.id;this.inventoryDraft={display_name:item.display_name,item_type:item.item_type,unit:item.unit,min_quantity:Number(item.min_quantity)||0}},
     async saveInventoryItem(){
       if(!this.isAdmin){this.notify('هذه العملية متاحة للمدير فقط','error');return}
