@@ -503,12 +503,15 @@ export default {
       if(error)this.notify('تعذر حفظ إعداد الطابعة: '+error.message,'error');else this.notify('تم حفظ إعدادات الطابعة')
     },
     async printJob (job) {
+      const w=window.open('','_blank','width=420,height=650')
+      if(!w){this.notify('اسمح بالنوافذ المنبثقة للطباعة','error');return}
+      w.document.write('<html><body style="font-family:Arial;padding:20px">جاري تجهيز أمر الطباعة...</body></html>')
       const [{data:order},{data:items},{data:settings}]=await Promise.all([supabase.from('orders').select('*').eq('id',job.order_id).single(),supabase.from('order_items').select('*').eq('order_id',job.order_id).eq('printer_route',job.printer_route),supabase.from('printer_settings').select('*').eq('route',job.printer_route).single()])
-      if(!order||!items?.length){this.notify('بيانات مهمة الطباعة غير مكتملة','error');return}
-      const w=window.open('','_blank','width=420,height=650');if(!w){this.notify('اسمح بالنوافذ المنبثقة للطباعة','error');return}
+      if(!order||!items?.length){w.close();this.notify('بيانات مهمة الطباعة غير مكتملة','error');return}
       const rows=items.map(x=>'<tr><td>'+x.product_name_snapshot+'</td><td>'+x.quantity+'</td></tr>').join('')
       const copies=Math.max(1,Math.min(4,Number(settings?.copies)||2))
       const slip='<section class="slip"><h2>سومر - '+this.routeLabel(job.printer_route)+'</h2><p>طلب رقم #'+order.order_number+'</p><p>'+(order.order_type==='delivery'?'دليفري':'صالة')+' · '+(order.customer_name||'')+'</p><p>'+(order.delivery_address||'')+'</p><table>'+rows+'</table><p>وقت الطلب: '+this.formatDate(order.created_at)+'</p></section>'
+      w.document.open()
       w.document.write('<html dir="rtl"><meta charset="utf-8"><title>طلب سومر</title><style>body{font-family:Arial;padding:12px}.slip{page-break-after:always}h2,p{text-align:center}table{width:100%;border-collapse:collapse}td{padding:8px;border-bottom:1px dashed #999}</style>'+Array.from({length:copies},()=>slip).join('')+'<script>window.onload=()=>window.print()<\\/script></html>')
       w.document.close()
       await this.setPrintStatus(job,'printed')
