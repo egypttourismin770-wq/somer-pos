@@ -46,12 +46,14 @@
         <div class="side-caption">{{ isEnglish ? "Workspace" : "مساحة التشغيل" }}</div>
         <button class="side-link" :class="{active:page==='cashier'}" @click="go('cashier')"><span>▦</span> {{ isEnglish ? "Cashier" : "الكاشير" }}</button>
         <button class="side-link" :class="{active:page==='orders'}" @click="go('orders')"><span>▤</span> {{ isEnglish ? "Orders" : "الطلبات" }} <i v-if="orders.length">{{ orders.length }}</i></button>
+        <button class="side-link" :class="{active:page==='shifts'}" @click="go('shifts')"><span>◷</span> {{ isEnglish ? "My Shift" : "الشيفت والحساب" }}</button>
         <template v-if="isAdmin">
           <div class="side-caption side-gap">{{ isEnglish ? "Management" : "الإدارة" }}</div>
           <button class="side-link" :class="{active:page==='dashboard'}" @click="go('dashboard')"><span>◫</span> {{ isEnglish ? "Dashboard" : "لوحة التحكم" }}</button>
           <button class="side-link" :class="{active:page==='products'}" @click="go('products')"><span>◈</span> {{ isEnglish ? "Products & Menu" : "المنتجات والمنيو" }}</button>
           <button class="side-link" :class="{active:page==='inventory'}" @click="go('inventory')"><span>▥</span> {{ isEnglish ? "Inventory" : "المخزون" }}</button>
           <button class="side-link" :class="{active:page==='staff'}" @click="go('staff')"><span>♙</span> {{ isEnglish ? "Staff" : "الموظفون" }}</button>
+          <button class="side-link" :class="{active:page==='printers'}" @click="go('printers')"><span>▤</span> {{ isEnglish ? "Printers" : "الطابعات والطباعة" }}</button>
         </template>
         <div class="side-bottom">
           <div class="connection"><i></i><span>{{ isEnglish ? "Database connected" : "متصل بقاعدة البيانات" }}</span></div>
@@ -203,6 +205,43 @@
         </section>
 
         <!-- INVENTORY -->
+        <section v-if="page==='shifts'" class="page-content">
+          <div class="page-intro"><div><span class="kicker gold">SHIFT CONTROL</span><h2>الشيفت والحساب</h2><p>افتح شيفتك وسجل العهدة، ثم اقفلها بمراجعة النقدية.</p></div><button class="outline-btn" @click="loadShiftData">↻ تحديث</button></div>
+          <div class="surface-card">
+            <div v-if="openShift" class="shift-summary">
+              <h3>شيفت مفتوح</h3><p>بدأ في: {{ formatDate(openShift.opened_at) }} · العهدة: {{ money(openShift.opening_cash) }} جنيه</p>
+              <div class="form-grid"><div class="field"><label>النقدية الموجودة فعليًا عند الإقفال</label><input v-model.number="shiftClosingCash" type="number" min="0" step="0.01"></div><div class="field"><label>ملاحظة الإقفال</label><input v-model="shiftNote" placeholder="ملاحظات اختيارية"></div></div>
+              <button class="primary-btn" :disabled="busy" @click="closeShift">إقفال الشيفت وطباعة التسوية</button>
+            </div>
+            <div v-else class="shift-summary"><h3>لا يوجد شيفت مفتوح</h3><p>ابدأ الشيفت بتسجيل مبلغ العهدة الموجود في الدرج.</p>
+              <div class="form-grid"><div class="field"><label>عهدة بداية الشيفت بالجنيه</label><input v-model.number="shiftOpeningCash" type="number" min="0" step="0.01"></div><div class="field"><label>ملاحظة بداية الشيفت</label><input v-model="shiftNote" placeholder="اختياري"></div></div>
+              <button class="primary-btn" :disabled="busy" @click="openShift">فتح الشيفت</button>
+            </div>
+            <div v-if="lastShiftReport" class="info-note">تسوية آخر شيفت: المتوقع {{ money(lastShiftReport.cash_expected) }} ج · المعدود {{ money(lastShiftReport.cash_counted) }} ج · الفرق {{ money(lastShiftReport.difference) }} ج <button class="outline-btn" @click="printShiftReport">طباعة التقرير</button></div>
+          </div>
+          <div class="surface-card" style="margin-top:14px"><h3>سجل الشيفتات</h3><div v-for="s in shiftHistory" :key="s.id" class="staff-row"><div class="staff-info"><b>{{ s.status==='open'?'مفتوح':'مغلق' }} · {{ formatDate(s.opened_at) }}</b><small>عهدة البداية {{ money(s.opening_cash) }} ج · {{ s.closed_at ? formatDate(s.closed_at) : 'لم يغلق بعد' }}</small></div><strong>{{ s.closing_cash_counted===null?'—':money(s.closing_cash_counted)+' ج' }}</strong></div><div v-if="!shiftHistory.length" class="empty-state">لا توجد شيفتات مسجلة.</div></div>
+        </section>
+
+        <section v-if="page==='printers' && isAdmin" class="page-content">
+          <div class="page-intro"><div><span class="kicker gold">PRINT STATIONS</span><h2>الطابعات والطباعة</h2><p>حدد اسم الطابعة ومسار الأصناف وعدد النسخ. الطباعة من المتصفح تحتاج تأكيد نافذة الطباعة.</p></div><button class="outline-btn" @click="loadPrintData">↻ تحديث</button></div>
+          <div class="surface-card">
+            <div v-for="printer in printerSettings" :key="printer.route" class="printer-setting-row">
+              <div class="staff-info"><b>{{ printer.display_name }}</b><small>مسار: {{ routeLabel(printer.route) }}</small></div>
+              <input v-model="printer.device_name" placeholder="اسم الطابعة على الكمبيوتر">
+              <select v-model="printer.connection_type"><option value="browser">طباعة المتصفح</option><option value="network">شبكة IP</option><option value="usb">USB عبر برنامج وسيط</option></select>
+              <input v-if="printer.connection_type==='network'" v-model="printer.ip_address" placeholder="عنوان IP">
+              <input v-model.number="printer.copies" type="number" min="1" max="4" aria-label="عدد النسخ">
+              <label><input v-model="printer.is_active" type="checkbox"> مفعلة</label>
+              <button class="outline-btn" @click="savePrinter(printer)">حفظ</button>
+            </div>
+          </div>
+          <div class="surface-card" style="margin-top:14px"><div class="surface-title"><div><h3>مهام الطباعة المعلقة</h3><p>كل مسار صنف ينشئ مهمة طباعة عند حفظ الطلب.</p></div><button class="outline-btn" @click="loadPrintData">تحديث المهام</button></div>
+            <div v-for="job in printJobs" :key="job.id" class="staff-row"><div class="staff-info"><b>طلب #{{ job.order_id }} · {{ routeLabel(job.printer_route) }}</b><small>{{ job.status }} · {{ formatDate(job.queued_at) }} · {{ job.attempts }} محاولات</small></div><button class="primary-btn" @click="printJob(job)">طباعة الآن</button><button class="icon-btn danger" @click="setPrintStatus(job,'cancelled')">×</button></div>
+            <div v-if="!printJobs.length" class="empty-state">لا توجد مهام طباعة معلقة.</div>
+          </div>
+          <div class="info-note">مهم: تم تجهيز طابور الطباعة داخل النظام. الطباعة التلقائية الصامتة بمجرد وصول الطلب تتطلب تثبيت برنامج وسيط صغير على كمبيوتر الكاشير، لأن المتصفح لا يسمح للموقع بالتحكم المباشر في طابعة USB أو طباعة صامتة دون إذن. لن نطلب منك بيانات باركود؛ نحتاج موديل الطابعة وطريقة توصيلها عند إعداد الوسيط.</div>
+        </section>
+
         <section v-if="page==='inventory' && isAdmin" class="page-content">
           <div class="page-intro"><div><span class="kicker gold">STOCK CONTROL</span><h2>المخزون</h2><p>المواد الأساسية المسجلة في قاعدة البيانات.</p></div><button class="outline-btn" @click="loadInventory">↻ تحديث</button></div>
           <div class="inventory-grid">
@@ -216,7 +255,7 @@
         <section v-if="page==='staff' && isAdmin" class="page-content">
           <div class="page-intro"><div><span class="kicker gold">TEAM ACCESS</span><h2>{{ isEnglish ? 'Staff & Permissions' : 'الموظفون والصلاحيات' }}</h2><p>{{ isEnglish ? 'Manage employee accounts and roles.' : 'عرض الحسابات المرتبطة بملفات الموظفين.' }}</p></div><button class="primary-btn" @click="openStaffModal">＋ {{ isEnglish ? 'Add employee' : 'إضافة موظف' }}</button></div>
           <div class="surface-card">
-            <div v-for="person in staff" :key="person.id" class="staff-row"><div class="profile-avatar">{{ (person.display_name||'م').slice(0,1) }}</div><div class="staff-info"><b>{{ person.display_name || 'موظف' }}</b><small>{{ person.id }}</small></div><span class="role-pill">{{ roleName(person.role) }}</span><span class="active-label" :class="{inactive:!person.is_active}">{{ person.is_active?'نشط':'موقوف' }}</span></div>
+            <div v-for="person in staff" :key="person.id" class="staff-row"><div class="profile-avatar">{{ (person.display_name||'م').slice(0,1) }}</div><div class="staff-info"><b>{{ person.display_name || 'موظف' }}</b><small>{{ person.id }}</small></div><span class="role-pill">{{ roleName(person.role) }}</span><span class="active-label" :class="{inactive:!person.is_active}">{{ person.is_active?'نشط':'موقوف' }}</span><select :value="person.role" @change="updateStaff(person,{role:$event.target.value})"><option value="manager">مدير</option><option value="cashier">كاشير</option><option value="kitchen">مطبخ</option><option value="delivery">دليفري</option></select><button class="outline-btn" @click="updateStaff(person,{is_active:!person.is_active})">{{ person.is_active?'إيقاف':'تفعيل' }}</button></div>
             <div v-if="!staff.length" class="empty-state">{{ isEnglish ? 'No employee accounts linked yet.' : 'لا توجد حسابات موظفين مرتبطة حتى الآن.' }}</div>
           </div>
           <div class="info-note">{{ isEnglish ? 'Only authorized administrators can create employee accounts. Each employee receives a role and an active profile.' : 'إنشاء حساب الموظف وتحديد دوره يتم من هنا للمديرين المعتمدين فقط، ولا يوجد تسجيل عام مفتوح.' }}</div>
@@ -273,7 +312,7 @@ export default {
     return {
       loading: true, busy: false, productsLoading: false, session: null, profile: {},
       isEnglish: localStorage.getItem("somer-pos-language") === "en",
-      staffModal: false, staffError: "", staffForm: { display_name: "", email: "", password: "", role: "cashier" },
+      staffModal: false, staffError: "", openShift: null, shiftHistory: [], shiftOpeningCash: 0, shiftClosingCash: 0, shiftNote: "", lastShiftReport: null, printerSettings: [], printJobs: [], staffForm: { display_name: "", email: "", password: "", role: "cashier" },
       page: 'cashier', mobileNav: false, login: { email: '', password: '' },
       error: '', notice: { text: '', type: 'success' }, clock: '', dateLabel: '',
       clockTimer: null, authSubscription: null,
@@ -289,7 +328,7 @@ export default {
     isAdmin () { return ['owner_admin', 'manager'].includes(this.profile.role) },
     roleLabel () { return this.roleName(this.profile.role) },
     pageTitle () {
-      return this.isEnglish ? ({ cashier: 'Point of Sale', dashboard: 'Dashboard', products: 'Products & Menu', orders: 'Orders', inventory: 'Inventory', staff: 'Staff' })[this.page] || 'Somer' : ({ cashier: 'نقطة البيع', dashboard: 'لوحة التحكم', products: 'المنتجات والمنيو', orders: 'الطلبات', inventory: 'المخزون', staff: 'الموظفون' })[this.page] || 'سومر'
+      return this.isEnglish ? ({ cashier: 'Point of Sale', dashboard: 'Dashboard', products: 'Products & Menu', orders: 'Orders', inventory: 'Inventory', staff: 'Staff', shifts: 'My Shift', printers: 'Printers' })[this.page] || 'Somer' : ({ cashier: 'نقطة البيع', dashboard: 'لوحة التحكم', products: 'المنتجات والمنيو', orders: 'الطلبات', inventory: 'المخزون', staff: 'الموظفون', shifts: 'الشيفت والحساب', printers: 'الطابعات والطباعة' })[this.page] || 'سومر'
     },
     filteredProducts () {
       const q = this.search.trim().toLocaleLowerCase()
@@ -417,16 +456,73 @@ export default {
       const { data, error } = await supabase.from('staff_profiles').select('*').order('created_at', { ascending: false })
       if (!error) this.staff = data || []
     },
+    async loadShiftData () {
+      const { data: current } = await supabase.rpc('get_my_open_shift')
+      this.openShift = current || null
+      const { data } = await supabase.from('shifts').select('*').order('opened_at',{ascending:false}).limit(30)
+      this.shiftHistory = data || []
+    },
+    async openShift () {
+      this.busy=true
+      const {data,error}=await supabase.rpc('open_staff_shift',{p_opening_cash:Number(this.shiftOpeningCash)||0,p_note:this.shiftNote||null})
+      this.busy=false
+      if(error){this.notify('تعذر فتح الشيفت: '+error.message,'error');return}
+      this.openShift=data;this.notify('تم فتح الشيفت بنجاح');await this.loadShiftData()
+    },
+    async closeShift () {
+      if(!this.openShift)return
+      this.busy=true
+      const {data,error}=await supabase.rpc('close_staff_shift',{p_shift_id:this.openShift.id,p_counted_cash:Number(this.shiftClosingCash)||0,p_note:this.shiftNote||null})
+      this.busy=false
+      if(error){this.notify('تعذر إقفال الشيفت: '+error.message,'error');return}
+      this.lastShiftReport=data;this.openShift=null;this.notify('تم إقفال الشيفت وحفظ التسوية');await this.loadShiftData();this.printShiftReport()
+    },
+    printShiftReport () {
+      if(!this.lastShiftReport)return
+      const r=this.lastShiftReport;const w=window.open('','_blank','width=420,height=650')
+      if(!w){this.notify('اسمح بالنوافذ المنبثقة لطباعة التقرير','error');return}
+      w.document.write('<html dir="rtl"><meta charset="utf-8"><title>تسوية الشيفت</title><body style="font-family:Arial;padding:20px"><h2>سومر - تسوية الشيفت</h2><p>المبيعات: '+this.money(r.sales_total)+' ج</p><p>المصروفات: '+this.money(r.expenses_total)+' ج</p><p>النقدية المتوقعة: '+this.money(r.cash_expected)+' ج</p><p>النقدية المعدودة: '+this.money(r.cash_counted)+' ج</p><h3>الفرق: '+this.money(r.difference)+' ج</h3><script>window.onload=()=>window.print()<\/script></body></html>');w.document.close()
+    },
+    async loadPrintData () {
+      const [p,j]=await Promise.all([supabase.from('printer_settings').select('*').order('route'),supabase.from('print_jobs').select('*').in('status',['queued','failed']).order('queued_at').limit(50)])
+      if(p.error)this.notify('تعذر تحميل إعدادات الطابعات: '+p.error.message,'error');else this.printerSettings=p.data||[]
+      if(j.error)this.notify('تعذر تحميل مهام الطباعة: '+j.error.message,'error');else this.printJobs=j.data||[]
+    },
+    async savePrinter (printer) {
+      const {error}=await supabase.from('printer_settings').update({display_name:printer.display_name,connection_type:printer.connection_type,device_name:printer.device_name,ip_address:printer.ip_address,copies:printer.copies,is_active:printer.is_active,updated_at:new Date().toISOString()}).eq('id',printer.id)
+      if(error)this.notify('تعذر حفظ إعداد الطابعة: '+error.message,'error');else this.notify('تم حفظ إعدادات الطابعة')
+    },
+    async printJob (job) {
+      const [{data:order},{data:items},{data:settings}]=await Promise.all([supabase.from('orders').select('*').eq('id',job.order_id).single(),supabase.from('order_items').select('*').eq('order_id',job.order_id).eq('printer_route',job.printer_route),supabase.from('printer_settings').select('*').eq('route',job.printer_route).single()])
+      if(!order||!items?.length){this.notify('بيانات مهمة الطباعة غير مكتملة','error');return}
+      const w=window.open('','_blank','width=420,height=650');if(!w){this.notify('اسمح بالنوافذ المنبثقة للطباعة','error');return}
+      const rows=items.map(x=>'<tr><td>'+x.product_name_snapshot+'</td><td>'+x.quantity+'</td></tr>').join('')
+      const html='<html dir="rtl"><meta charset="utf-8"><title>طلب سومر</title><style>body{font-family:Arial;padding:12px}h2,p{text-align:center}table{width:100%;border-collapse:collapse}td{padding:8px;border-bottom:1px dashed #999}</style><h2>سومر - '+this.routeLabel(job.printer_route)+'</h2><p>طلب رقم #'+order.order_number+'</p><p>'+(order.order_type==='delivery'?'دليفري':'صالة')+' · '+(order.customer_name||'')+'</p><p>'+(order.delivery_address||'')+'</p><table>'+rows+'</table><p>وقت الطلب: '+this.formatDate(order.created_at)+'</p></html>'
+      for(let i=0;i<Math.max(1,Math.min(4,Number(settings?.copies)||2));i++){w.document.write(html+(i===Math.max(1,Math.min(4,Number(settings?.copies)||2))-1?'<script>window.onload=()=>window.print()<\/script>':''))}
+      w.document.close()
+      await this.setPrintStatus(job,'printed')
+    },
+    async setPrintStatus(job,status) {
+      const {error}=await supabase.rpc('set_print_job_status',{p_job_id:job.id,p_status:status,p_error:null})
+      if(error)this.notify('تعذر تحديث حالة الطباعة: '+error.message,'error');else await this.loadPrintData()
+    },
+    async updateStaff(person,patch) {
+      const payload={display_name:person.display_name,role:patch.role||person.role,is_active:patch.is_active===undefined?person.is_active:patch.is_active}
+      const {data,error}=await supabase.rpc('staff_update_profile',{p_staff_id:person.id,p_display_name:payload.display_name,p_role:payload.role,p_is_active:payload.is_active})
+      if(error)this.notify('تعذر تحديث الموظف: '+error.message,'error');else{Object.assign(person,data);this.notify('تم تحديث بيانات الموظف')}
+    },
     async loadInventory () {
       const { data, error } = await supabase.from('inventory_items').select('*').eq('is_active', true).order('display_name')
       if (!error) this.inventory = data || []
     },
     go (page) {
-      if (['dashboard', 'products', 'inventory', 'staff'].includes(page) && !this.isAdmin) return
+      if (['dashboard', 'products', 'inventory', 'staff', 'printers'].includes(page) && !this.isAdmin) return
       this.page = page; this.mobileNav = false
       if (page === 'orders') this.loadOrders()
       if (page === 'products') { this.loadCategories(); this.loadProducts() }
       if (page === 'dashboard') this.loadAdminData()
+      if (page === 'shifts') this.loadShiftData()
+      if (page === 'printers') this.loadPrintData()
     },
     addToCart (product) {
       const found = this.cart.find(x => x.id === product.id)
