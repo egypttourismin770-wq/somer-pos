@@ -1,0 +1,18 @@
+{
+  "name": "somer-pos",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "serve": "vue-cli-service serve",
+    "build": "vue-cli-service build"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.49.8",
+    "vue": "3.3.4"
+  },
+  "devDependencies": {
+    "@vue/cli-plugin-babel": "5.0.8",
+    "@vue/cli-service": "5.0.8",
+    "@vue/compiler-sfc": "3.3.4"
+  }
+}
