@@ -529,7 +529,7 @@ export default {
       w.document.open()
       w.document.write('<html dir="rtl"><meta charset="utf-8"><title>طلب سومر</title><style>body{font-family:Arial;padding:12px}.slip{page-break-after:always}h2,p{text-align:center}table{width:100%;border-collapse:collapse}td{padding:8px;border-bottom:1px dashed #999}</style>'+Array.from({length:copies},()=>slip).join('')+'<script>window.onload=()=>window.print()<\\/script></html>')
       w.document.close()
-      await this.setPrintStatus(job,'printed')
+      w.onafterprint = () => { this.setPrintStatus(job,'printed') }
     },
     async setPrintStatus(job,status) {
       const {error}=await supabase.rpc('set_print_job_status',{p_job_id:job.id,p_status:status,p_error:null})
