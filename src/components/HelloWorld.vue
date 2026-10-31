@@ -245,12 +245,15 @@
 
         <section v-if="page==='inventory' && isAdmin" class="page-content">
   <div class="page-intro"><div><span class="kicker gold">STOCK CONTROL</span><h2>المخزون وحركة الأصناف</h2><p>إدارة الخامات والأرصدة والتوريد والهالك والوصفات.</p></div><button class="outline-btn" @click="loadInventory">↻ تحديث</button></div>
-  <div class="surface-card"><h3>إضافة صنف مخزون</h3><div class="form-grid">
-    <div class="field"><label>اسم الصنف</label><input v-model.trim="inventoryDraft.display_name"></div>
-    <div class="field"><label>التصنيف</label><select v-model="inventoryDraft.item_type"><option v-for="t in inventoryTypes" :key="t.value" :value="t.value">{{ t.label }}</option></select></div>
-    <div class="field"><label>الوحدة</label><select v-model="inventoryDraft.unit"><option>كجم</option><option>جرام</option><option>لتر</option><option>مل</option><option>قطعة</option><option>عبوة</option><option>وحدة</option></select></div>
-    <div class="field"><label>حد التنبيه</label><input v-model.number="inventoryDraft.min_quantity" type="number" min="0" step="0.001"></div>
-  </div><button class="primary-btn" :disabled="busy || !inventoryDraft.display_name" @click="saveInventoryItem">حفظ الصنف</button></div>
+  <div class="surface-card"><h3>{{ editingInventoryId ? 'تعديل صنف المخزون' : 'إضافة صنف مخزون جديد' }}</h3>
+    <form class="form-grid" @submit.prevent="saveInventoryItem">
+      <div class="field"><label>اسم الصنف</label><input v-model.trim="inventoryDraft.display_name" type="text" placeholder="اكتب اسم الصنف الجديد" required maxlength="120"></div>
+      <div class="field"><label>التصنيف</label><select v-model="inventoryDraft.item_type" required><option v-for="t in inventoryTypes" :key="t.value" :value="t.value">{{ t.label }}</option></select></div>
+      <div class="field"><label>الوحدة</label><select v-model="inventoryDraft.unit" required><option>كجم</option><option>جرام</option><option>لتر</option><option>مل</option><option>قطعة</option><option>عبوة</option><option>وحدة</option></select></div>
+      <div class="field"><label>حد التنبيه</label><input v-model.number="inventoryDraft.min_quantity" type="number" min="0" step="0.001"></div>
+      <div class="field full"><button class="primary-btn" type="submit" :disabled="busy || !inventoryDraft.display_name.trim()">{{ busy ? 'جاري الحفظ...' : (editingInventoryId ? 'حفظ التعديل' : 'إضافة الصنف للمخزون') }}</button><button v-if="editingInventoryId" class="outline-btn" type="button" @click="editingInventoryId=null;inventoryDraft={display_name:'',item_type:'other',unit:'كجم',min_quantity:0}">إلغاء التعديل</button></div>
+    </form>
+  </div>
   <div class="surface-card" style="margin-top:14px"><h3>تسجيل وارد أو صرف أو هالك أو جرد</h3><div class="form-grid">
     <div class="field"><label>الصنف</label><select v-model="stockDraft.inventory_item_id"><option value="">اختر الصنف</option><option v-for="i in inventory" :key="i.id" :value="i.id">{{ i.display_name }} ({{ i.unit }})</option></select></div>
     <div class="field"><label>الحركة</label><select v-model="stockDraft.movement_type"><option value="purchase_receipt">وارد / شراء</option><option value="opening_stock">رصيد افتتاحي</option><option value="waste">هالك / تالف</option><option value="return">مرتجع</option><option value="adjustment">تسوية جرد</option></select></div>
@@ -573,14 +576,26 @@ export default {
     productName(id){return this.products.find(x=>x.id===id)?.name||'منتج'},
     editInventoryItem(item){this.editingInventoryId=item.id;this.inventoryDraft={display_name:item.display_name,item_type:item.item_type,unit:item.unit,min_quantity:Number(item.min_quantity)||0}},
     async saveInventoryItem(){
-      if(!this.isAdmin||!this.inventoryDraft.display_name.trim())return
+      if(!this.isAdmin){this.notify('هذه العملية متاحة للمدير فقط','error');return}
+      const name=String(this.inventoryDraft.display_name||'').trim()
+      if(!name){this.notify('اكتب اسم الصنف أولاً','error');return}
+      if(!this.inventoryDraft.item_type||!this.inventoryDraft.unit){this.notify('اختر التصنيف ووحدة القياس','error');return}
       this.busy=true
-      const payload={display_name:this.inventoryDraft.display_name.trim(),item_type:this.inventoryDraft.item_type,unit:this.inventoryDraft.unit,min_quantity:Number(this.inventoryDraft.min_quantity)||0,is_active:true}
-      const query=this.editingInventoryId?supabase.from('inventory_items').update(payload).eq('id',this.editingInventoryId):supabase.from('inventory_items').insert(payload)
-      const {error}=await query;this.busy=false
-      if(error){this.notify('تعذر حفظ صنف المخزون: '+error.message,'error');return}
-      this.inventoryDraft={display_name:'',item_type:'other',unit:'كجم',min_quantity:0};this.editingInventoryId=null
-      this.notify('تم حفظ صنف المخزون');await this.loadInventory()
+      const payload={display_name:name,item_type:this.inventoryDraft.item_type,unit:this.inventoryDraft.unit,min_quantity:Math.max(0,Number(this.inventoryDraft.min_quantity)||0),is_active:true}
+      try{
+        const query=this.editingInventoryId
+          ? supabase.from('inventory_items').update(payload).eq('id',this.editingInventoryId).select('id,display_name').single()
+          : supabase.from('inventory_items').insert(payload).select('id,display_name').single()
+        const {data,error}=await query
+        if(error)throw error
+        if(!data?.id)throw new Error('لم يرجع النظام تأكيد حفظ الصنف. راجع صلاحيات الحساب وحاول مرة أخرى.')
+        this.inventoryDraft={display_name:'',item_type:'other',unit:'كجم',min_quantity:0};this.editingInventoryId=null
+        await this.loadInventory()
+        this.notify('تم حفظ الصنف '+data.display_name+' وظهر في قائمة المخزون')
+      }catch(error){
+        const message=error?.code==='23505'?'يوجد صنف بنفس الاسم بالفعل. غيّر الاسم أو افتح الصنف الموجود للتعديل.':(error?.message||'حدث خطأ غير معروف')
+        this.notify('لم يتم حفظ الصنف: '+message,'error')
+      }finally{this.busy=false}
     },
     async recordStockMovement(){
       if(!this.isAdmin)return
@@ -728,7 +743,12 @@ export default {
     roleName (r) { return ({ owner_admin: 'مدير النظام', manager: 'مشرف تشغيل', cashier: 'كاشير', kitchen: 'مطبخ', delivery: 'دليفري' })[r] || 'موظف' },
     employeeLabel (order) { if (order.employee_id === this.session?.user?.id) return this.profile.display_name || 'الموظف الحالي'; const person=this.staff.find(x=>x.id===order.employee_id); return person?.display_name || 'موظف مسجل' },
     routeLabel (r) { return ({ main: 'رئيسية', shawarma: 'شاورما', burger: 'برجر' })[r] || 'رئيسية' },
-    formatDate (value) { return new Date(value).toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }
+    formatDate (value) {
+      if(!value)return 'وقت غير مسجل'
+      const date=new Date(value)
+      if(Number.isNaN(date.getTime()))return 'وقت غير متاح'
+      return date.toLocaleString('ar-EG',{timeZone:'Africa/Cairo',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})
+    }
   }
 }
 </script>
