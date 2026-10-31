@@ -44,7 +44,7 @@
           <button class="mobile-close" @click="mobileNav=false">×</button>
         </div>
         <div class="side-caption">{{ isEnglish ? "Workspace" : "مساحة التشغيل" }}</div>
-        <button v-if="['manager','cashier'].includes(profile.role)" class="side-link" :class="{active:page==='cashier'}" @click="go('cashier')"><span>▦</span> {{ isEnglish ? "Cashier" : "الكاشير" }}</button>
+        <button v-if="canSell" class="side-link" :class="{active:page==='cashier'}" @click="go('cashier')"><span>▦</span> {{ isEnglish ? "Cashier" : "الكاشير" }}</button>
         <button class="side-link" :class="{active:page==='orders'}" @click="go('orders')"><span>▤</span> {{ isEnglish ? "Orders" : "الطلبات" }} <i v-if="orders.length">{{ orders.length }}</i></button>
         <button class="side-link" :class="{active:page==='shifts'}" @click="go('shifts')"><span>◷</span> {{ isEnglish ? "My Shift" : "الشيفت والحساب" }}</button>
         <template v-if="isAdmin">
@@ -351,7 +351,7 @@ export default {
   },
   computed: {
     isAdmin () { return this.profile.role === 'owner_admin' },
-    canSell () { return ['manager','cashier'].includes(this.profile.role) },
+    canSell () { return ['owner_admin','manager','cashier'].includes(this.profile.role) },
     canUpdateOrder () { return ['owner_admin','manager','cashier','kitchen','delivery'].includes(this.profile.role) },
     statusOptions () { const r=this.profile.role; if(r==='kitchen') return [{value:'preparing',label:'قيد التحضير'},{value:'ready',label:'جاهز'}]; if(r==='delivery') return [{value:'out_for_delivery',label:'خرج للتوصيل'},{value:'completed',label:'مكتمل'}]; if(r==='cashier') return [{value:'confirmed',label:'مؤكد'},{value:'cancelled',label:'ملغي'}]; return [{value:'confirmed',label:'مؤكد'},{value:'preparing',label:'قيد التحضير'},{value:'ready',label:'جاهز'},{value:'out_for_delivery',label:'خرج للتوصيل'},{value:'completed',label:'مكتمل'},{value:'cancelled',label:'ملغي'}] },
     roleLabel () { return this.roleName(this.profile.role) },
