@@ -497,8 +497,9 @@ export default {
       if(!order||!items?.length){this.notify('بيانات مهمة الطباعة غير مكتملة','error');return}
       const w=window.open('','_blank','width=420,height=650');if(!w){this.notify('اسمح بالنوافذ المنبثقة للطباعة','error');return}
       const rows=items.map(x=>'<tr><td>'+x.product_name_snapshot+'</td><td>'+x.quantity+'</td></tr>').join('')
-      const html='<html dir="rtl"><meta charset="utf-8"><title>طلب سومر</title><style>body{font-family:Arial;padding:12px}h2,p{text-align:center}table{width:100%;border-collapse:collapse}td{padding:8px;border-bottom:1px dashed #999}</style><h2>سومر - '+this.routeLabel(job.printer_route)+'</h2><p>طلب رقم #'+order.order_number+'</p><p>'+(order.order_type==='delivery'?'دليفري':'صالة')+' · '+(order.customer_name||'')+'</p><p>'+(order.delivery_address||'')+'</p><table>'+rows+'</table><p>وقت الطلب: '+this.formatDate(order.created_at)+'</p></html>'
-      for(let i=0;i<Math.max(1,Math.min(4,Number(settings?.copies)||2));i++){w.document.write(html+(i===Math.max(1,Math.min(4,Number(settings?.copies)||2))-1?'<script>window.onload=()=>window.print()<\/script>':''))}
+      const copies=Math.max(1,Math.min(4,Number(settings?.copies)||2))
+      const slip='<section class="slip"><h2>سومر - '+this.routeLabel(job.printer_route)+'</h2><p>طلب رقم #'+order.order_number+'</p><p>'+(order.order_type==='delivery'?'دليفري':'صالة')+' · '+(order.customer_name||'')+'</p><p>'+(order.delivery_address||'')+'</p><table>'+rows+'</table><p>وقت الطلب: '+this.formatDate(order.created_at)+'</p></section>'
+      w.document.write('<html dir="rtl"><meta charset="utf-8"><title>طلب سومر</title><style>body{font-family:Arial;padding:12px}.slip{page-break-after:always}h2,p{text-align:center}table{width:100%;border-collapse:collapse}td{padding:8px;border-bottom:1px dashed #999}</style>'+Array.from({length:copies},()=>slip).join('')+'<script>window.onload=()=>window.print()<\\/script></html>')
       w.document.close()
       await this.setPrintStatus(job,'printed')
     },
