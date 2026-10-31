@@ -44,7 +44,7 @@
           <button class="mobile-close" @click="mobileNav=false">×</button>
         </div>
         <div class="side-caption">{{ isEnglish ? "Workspace" : "مساحة التشغيل" }}</div>
-        <button v-if="['owner_admin','manager','cashier'].includes(profile.role)" class="side-link" :class="{active:page==='cashier'}" @click="go('cashier')"><span>▦</span> {{ isEnglish ? "Cashier" : "الكاشير" }}</button>
+        <button v-if="['manager','cashier'].includes(profile.role)" class="side-link" :class="{active:page==='cashier'}" @click="go('cashier')"><span>▦</span> {{ isEnglish ? "Cashier" : "الكاشير" }}</button>
         <button class="side-link" :class="{active:page==='orders'}" @click="go('orders')"><span>▤</span> {{ isEnglish ? "Orders" : "الطلبات" }} <i v-if="orders.length">{{ orders.length }}</i></button>
         <button class="side-link" :class="{active:page==='shifts'}" @click="go('shifts')"><span>◷</span> {{ isEnglish ? "My Shift" : "الشيفت والحساب" }}</button>
         <template v-if="isAdmin">
@@ -55,6 +55,7 @@
           <button class="side-link" :class="{active:page==='staff'}" @click="go('staff')"><span>♙</span> {{ isEnglish ? "Staff" : "الموظفون" }}</button>
           <button class="side-link" :class="{active:page==='printers'}" @click="go('printers')"><span>▤</span> {{ isEnglish ? "Printers" : "الطابعات والطباعة" }}</button>
         </template>
+        <button class="side-link" :class="{active:page==='printers'}" @click="go('printers')"><span>▤</span> {{ isEnglish ? "Print Queue" : "الطباعة وتجهيز الطلبات" }}</button>
         <div class="side-bottom">
           <div class="connection"><i></i><span>{{ isEnglish ? "Database connected" : "متصل بقاعدة البيانات" }}</span></div>
           <div class="profile">
@@ -218,14 +219,14 @@
               <div class="form-grid"><div class="field"><label>عهدة بداية الشيفت بالجنيه</label><input v-model.number="shiftOpeningCash" type="number" min="0" step="0.01"></div><div class="field"><label>ملاحظة بداية الشيفت</label><input v-model="shiftNote" placeholder="اختياري"></div></div>
               <button class="primary-btn" :disabled="busy" @click="openShift">فتح الشيفت</button>
             </div>
-            <div v-if="lastShiftReport" class="info-note">تسوية آخر شيفت: المتوقع {{ money(lastShiftReport.cash_expected) }} ج · المعدود {{ money(lastShiftReport.cash_counted) }} ج · الفرق {{ money(lastShiftReport.difference) }} ج <button class="outline-btn" @click="printShiftReport">طباعة التقرير</button></div>
+            <div v-if="lastShiftReport" class="info-note">كشف الحساب: المبيعات {{ money(lastShiftReport.sales_total) }} ج · الخصومات {{ money(lastShiftReport.discounts_total) }} ج · المتوقع بالدرج {{ money(lastShiftReport.cash_expected) }} ج · المعدود {{ money(lastShiftReport.cash_counted) }} ج · الفرق {{ money(lastShiftReport.difference) }} ج <button class="outline-btn" @click="printShiftReport">طباعة التقرير</button></div>
           </div>
           <div class="surface-card" style="margin-top:14px"><h3>سجل الشيفتات</h3><div v-for="s in shiftHistory" :key="s.id" class="staff-row"><div class="staff-info"><b>{{ s.status==='open'?'مفتوح':'مغلق' }} · {{ formatDate(s.opened_at) }}</b><small>عهدة البداية {{ money(s.opening_cash) }} ج · {{ s.closed_at ? formatDate(s.closed_at) : 'لم يغلق بعد' }}</small></div><strong>{{ s.closing_cash_counted===null?'—':money(s.closing_cash_counted)+' ج' }}</strong></div><div v-if="!shiftHistory.length" class="empty-state">لا توجد شيفتات مسجلة.</div></div>
         </section>
 
-        <section v-if="page==='printers' && isAdmin" class="page-content">
+        <section v-if="page==='printers'" class="page-content">
           <div class="page-intro"><div><span class="kicker gold">PRINT STATIONS</span><h2>الطابعات والطباعة</h2><p>حدد اسم الطابعة ومسار الأصناف وعدد النسخ. الطباعة من المتصفح تحتاج تأكيد نافذة الطباعة.</p></div><button class="outline-btn" @click="loadPrintData">↻ تحديث</button></div>
-          <div class="surface-card">
+          <div v-if="isAdmin" class="surface-card">
             <div v-for="printer in printerSettings" :key="printer.route" class="printer-setting-row">
               <div class="staff-info"><b>{{ printer.display_name }}</b><small>مسار: {{ routeLabel(printer.route) }}</small></div>
               <input v-model="printer.device_name" placeholder="اسم الطابعة على الكمبيوتر">
@@ -327,7 +328,7 @@ export default {
   },
   computed: {
     isAdmin () { return this.profile.role === 'owner_admin' },
-    canSell () { return ['owner_admin','manager','cashier'].includes(this.profile.role) },
+    canSell () { return ['manager','cashier'].includes(this.profile.role) },
     canUpdateOrder () { return ['owner_admin','manager','cashier','kitchen','delivery'].includes(this.profile.role) },
     statusOptions () { const r=this.profile.role; if(r==='kitchen') return [{value:'preparing',label:'قيد التحضير'},{value:'ready',label:'جاهز'}]; if(r==='delivery') return [{value:'out_for_delivery',label:'خرج للتوصيل'},{value:'completed',label:'مكتمل'}]; if(r==='cashier') return [{value:'confirmed',label:'مؤكد'},{value:'cancelled',label:'ملغي'}]; return [{value:'confirmed',label:'مؤكد'},{value:'preparing',label:'قيد التحضير'},{value:'ready',label:'جاهز'},{value:'out_for_delivery',label:'خرج للتوصيل'},{value:'completed',label:'مكتمل'},{value:'cancelled',label:'ملغي'}] },
     roleLabel () { return this.roleName(this.profile.role) },
@@ -505,7 +506,7 @@ export default {
       if(!this.lastShiftReport)return
       const r=this.lastShiftReport;const w=window.open('','_blank','width=420,height=650')
       if(!w){this.notify('اسمح بالنوافذ المنبثقة لطباعة التقرير','error');return}
-      w.document.write('<html dir="rtl"><meta charset="utf-8"><title>تسوية الشيفت</title><body style="font-family:Arial;padding:20px"><h2>سومر - تسوية الشيفت</h2><p>المبيعات: '+this.money(r.sales_total)+' ج</p><p>المصروفات: '+this.money(r.expenses_total)+' ج</p><p>النقدية المتوقعة: '+this.money(r.cash_expected)+' ج</p><p>النقدية المعدودة: '+this.money(r.cash_counted)+' ج</p><h3>الفرق: '+this.money(r.difference)+' ج</h3><script>window.onload=()=>window.print()<\/script></body></html>');w.document.close()
+      w.document.write('<html dir="rtl"><meta charset="utf-8"><title>تسوية الشيفت</title><body style="font-family:Arial;padding:20px"><h2>سومر - كشف حساب الشيفت</h2><p>الموظف: '+(this.profile.display_name||'')+'</p><p>مدة الشيفت: '+(r.duration_minutes||0)+' دقيقة</p><p>إجمالي المبيعات: '+this.money(r.sales_total)+' ج</p><p>إجمالي الخصومات: '+this.money(r.discounts_total)+' ج</p><p>المقبوضات النقدية: '+this.money(r.cash_sales_total)+' ج</p><p>المصروفات: '+this.money(r.expenses_total)+' ج</p><p>السحوبات والمرتجعات: '+this.money(r.cash_out_total)+' ج</p><p>النقدية المتوقعة بالدرج: '+this.money(r.cash_expected)+' ج</p><p>النقدية المعدودة: '+this.money(r.cash_counted)+' ج</p><h3>العجز / الزيادة: '+this.money(r.difference)+' ج</h3><script>window.onload=()=>window.print()<\\/script></body></html>');w.document.close()
     },
     async loadPrintData () {
       const [p,j]=await Promise.all([supabase.from('printer_settings').select('*').order('route'),supabase.from('print_jobs').select('*').in('status',['queued','failed']).order('queued_at').limit(50)])
@@ -544,7 +545,7 @@ export default {
       if (!error) this.inventory = data || []
     },
     go (page) {
-      if (['dashboard', 'products', 'inventory', 'staff', 'printers'].includes(page) && !this.isAdmin) return
+      if (['dashboard', 'products', 'inventory', 'staff'].includes(page) && !this.isAdmin) return
       if (page === 'cashier' && !this.canSell) return
       this.page = page; this.mobileNav = false
       if (page === 'orders') this.loadOrders()
