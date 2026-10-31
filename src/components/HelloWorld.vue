@@ -362,12 +362,13 @@ export default {
     this.session = data.session
     if (this.session) await this.loadProfileAndStart()
     this.loading = false
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       this.session = session
-      if (session) {
-        await this.loadProfileAndStart()
-      } else {
-        this.profile = {}; this.products = []; this.orders = []; this.cart = []; this.page = 'cashier'
+      if (session && event === 'SIGNED_IN') {
+        // Do not call Supabase APIs inside onAuthStateChange; defer profile loading to avoid auth-lock deadlocks.
+        window.setTimeout(() => { if (this.session?.user?.id === session.user.id) this.loadProfileAndStart() }, 0)
+      } else if (!session) {
+        this.profile = {}; this.products = []; this.orders = []; this.cart = []; this.page = 'cashier'; this.openShift = null
       }
     })
     this.authSubscription = listener.subscription
