@@ -44,7 +44,7 @@
           <button class="mobile-close" @click="mobileNav=false">×</button>
         </div>
         <div class="side-caption">{{ isEnglish ? "Workspace" : "مساحة التشغيل" }}</div>
-        <button class="side-link" :class="{active:page==='cashier'}" @click="go('cashier')"><span>▦</span> {{ isEnglish ? "Cashier" : "الكاشير" }}</button>
+        <button v-if="['owner_admin','manager','cashier'].includes(profile.role)" class="side-link" :class="{active:page==='cashier'}" @click="go('cashier')"><span>▦</span> {{ isEnglish ? "Cashier" : "الكاشير" }}</button>
         <button class="side-link" :class="{active:page==='orders'}" @click="go('orders')"><span>▤</span> {{ isEnglish ? "Orders" : "الطلبات" }} <i v-if="orders.length">{{ orders.length }}</i></button>
         <button class="side-link" :class="{active:page==='shifts'}" @click="go('shifts')"><span>◷</span> {{ isEnglish ? "My Shift" : "الشيفت والحساب" }}</button>
         <template v-if="isAdmin">
@@ -326,6 +326,7 @@ export default {
   },
   computed: {
     isAdmin () { return ['owner_admin', 'manager'].includes(this.profile.role) },
+    canSell () { return ['owner_admin','manager','cashier'].includes(this.profile.role) },
     roleLabel () { return this.roleName(this.profile.role) },
     pageTitle () {
       return this.isEnglish ? ({ cashier: 'Point of Sale', dashboard: 'Dashboard', products: 'Products & Menu', orders: 'Orders', inventory: 'Inventory', staff: 'Staff', shifts: 'My Shift', printers: 'Printers' })[this.page] || 'Somer' : ({ cashier: 'نقطة البيع', dashboard: 'لوحة التحكم', products: 'المنتجات والمنيو', orders: 'الطلبات', inventory: 'المخزون', staff: 'الموظفون', shifts: 'الشيفت والحساب', printers: 'الطابعات والطباعة' })[this.page] || 'سومر'
@@ -422,7 +423,7 @@ export default {
       this.profile = data
       await Promise.all([this.loadCategories(), this.loadProducts(), this.loadOrders()])
       if (this.isAdmin) await this.loadAdminData()
-      this.page = 'cashier'
+      this.page = this.canSell ? 'cashier' : 'orders'
     },
     async loadCategories () {
       const { data, error } = await supabase.from('product_categories').select('*').eq('is_active', true).order('sort_order')
@@ -518,6 +519,7 @@ export default {
     },
     go (page) {
       if (['dashboard', 'products', 'inventory', 'staff', 'printers'].includes(page) && !this.isAdmin) return
+      if (page === 'cashier' && !this.canSell) return
       this.page = page; this.mobileNav = false
       if (page === 'orders') this.loadOrders()
       if (page === 'products') { this.loadCategories(); this.loadProducts() }
@@ -540,6 +542,7 @@ export default {
     removeFromCart (id) { this.cart = this.cart.filter(x => x.id !== id) },
     clearCart () { this.cart = []; this.discount = 0; this.deliveryAddress = ''; this.customerName = ''; this.customerPhone = '' },
     async submitOrder () {
+      if (!this.canSell) { this.notify('حسابك غير مصرح له بإنشاء الطلبات','error'); return }
       if (!this.cart.length) return
       if (this.orderType === 'delivery' && !this.deliveryAddress.trim()) { this.notify('اكتب عنوان التوصيل أولاً', 'error'); return }
       this.busy = true
@@ -625,10 +628,7 @@ export default {
       else { this.notify(p.is_active ? 'تم إخفاء المنتج من المنيو' : 'تم تفعيل المنتج'); await this.loadProducts() }
     },
     async updateOrderStatus (order, status) {
-      const patch = { status }
-      if (status === 'completed') patch.completed_at = new Date().toISOString()
-      if (status === 'cancelled') patch.cancelled_at = new Date().toISOString()
-      const { error } = await supabase.from('orders').update(patch).eq('id', order.id)
+      const { error } = await supabase.rpc('update_order_status',{p_order_id:order.id,p_status:status})
       if (error) this.notify('تعذر تحديث حالة الطلب: ' + error.message, 'error')
       else { this.notify('تم تحديث حالة الطلب'); await this.loadOrders() }
     },
