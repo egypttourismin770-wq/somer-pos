@@ -43,18 +43,18 @@
           <div><b>سومر</b><small>RESTAURANT POS</small></div>
           <button class="mobile-close" @click="mobileNav=false">×</button>
         </div>
-        <div class="side-caption">مساحة التشغيل</div>
-        <button class="side-link" :class="{active:page==='cashier'}" @click="go('cashier')"><span>▦</span> الكاشير</button>
-        <button class="side-link" :class="{active:page==='orders'}" @click="go('orders')"><span>▤</span> الطلبات <i v-if="orders.length">{{ orders.length }}</i></button>
+        <div class="side-caption">{{ isEnglish ? "Workspace" : "مساحة التشغيل" }}</div>
+        <button class="side-link" :class="{active:page==='cashier'}" @click="go('cashier')"><span>▦</span> {{ isEnglish ? "Cashier" : "الكاشير" }}</button>
+        <button class="side-link" :class="{active:page==='orders'}" @click="go('orders')"><span>▤</span> {{ isEnglish ? "Orders" : "الطلبات" }} <i v-if="orders.length">{{ orders.length }}</i></button>
         <template v-if="isAdmin">
-          <div class="side-caption side-gap">الإدارة</div>
-          <button class="side-link" :class="{active:page==='dashboard'}" @click="go('dashboard')"><span>◫</span> لوحة التحكم</button>
-          <button class="side-link" :class="{active:page==='products'}" @click="go('products')"><span>◈</span> المنتجات والمنيو</button>
-          <button class="side-link" :class="{active:page==='inventory'}" @click="go('inventory')"><span>▥</span> المخزون</button>
-          <button class="side-link" :class="{active:page==='staff'}" @click="go('staff')"><span>♙</span> الموظفون</button>
+          <div class="side-caption side-gap">{{ isEnglish ? "Management" : "الإدارة" }}</div>
+          <button class="side-link" :class="{active:page==='dashboard'}" @click="go('dashboard')"><span>◫</span> {{ isEnglish ? "Dashboard" : "لوحة التحكم" }}</button>
+          <button class="side-link" :class="{active:page==='products'}" @click="go('products')"><span>◈</span> {{ isEnglish ? "Products & Menu" : "المنتجات والمنيو" }}</button>
+          <button class="side-link" :class="{active:page==='inventory'}" @click="go('inventory')"><span>▥</span> {{ isEnglish ? "Inventory" : "المخزون" }}</button>
+          <button class="side-link" :class="{active:page==='staff'}" @click="go('staff')"><span>♙</span> {{ isEnglish ? "Staff" : "الموظفون" }}</button>
         </template>
         <div class="side-bottom">
-          <div class="connection"><i></i><span>متصل بقاعدة البيانات</span></div>
+          <div class="connection"><i></i><span>{{ isEnglish ? "Database connected" : "متصل بقاعدة البيانات" }}</span></div>
           <div class="profile">
             <div class="profile-avatar">{{ (profile.display_name || session.user.email || 'م').slice(0,1) }}</div>
             <div class="profile-text"><b>{{ profile.display_name || session.user.email }}</b><small>{{ roleLabel }}</small></div>
@@ -66,7 +66,7 @@
       <main class="main-area">
         <header class="topbar">
           <button class="mobile-menu" @click="mobileNav=true">☰</button>
-          <div><div class="breadcrumb">سومر <span>/</span> {{ pageTitle }}</div><h1>{{ pageTitle }}</h1></div>
+          <div><div class="breadcrumb">{{ isEnglish ? "Somer" : "سومر" }} <span>/</span> {{ pageTitle }}</div><h1>{{ pageTitle }}</h1></div>
           <div class="topbar-right">
             <button class="language-toggle" @click="toggleLanguage" :aria-label="isEnglish ? 'Switch to Arabic' : 'Switch to English'">{{ isEnglish ? 'العربية' : 'English' }}</button>
             <div class="live-time"><b>{{ clock }}</b><small>{{ dateLabel }}</small></div>
@@ -289,7 +289,7 @@ export default {
     isAdmin () { return ['owner_admin', 'manager'].includes(this.profile.role) },
     roleLabel () { return this.roleName(this.profile.role) },
     pageTitle () {
-      return ({ cashier: 'نقطة البيع', dashboard: 'لوحة التحكم', products: 'المنتجات والمنيو', orders: 'الطلبات', inventory: 'المخزون', staff: 'الموظفون' })[this.page] || 'سومر'
+      return this.isEnglish ? ({ cashier: 'Point of Sale', dashboard: 'Dashboard', products: 'Products & Menu', orders: 'Orders', inventory: 'Inventory', staff: 'Staff' })[this.page] || 'Somer' : ({ cashier: 'نقطة البيع', dashboard: 'لوحة التحكم', products: 'المنتجات والمنيو', orders: 'الطلبات', inventory: 'المخزون', staff: 'الموظفون' })[this.page] || 'سومر'
     },
     filteredProducts () {
       const q = this.search.trim().toLocaleLowerCase()
