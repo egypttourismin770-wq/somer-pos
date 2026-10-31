@@ -329,7 +329,7 @@ export default {
   name: 'HelloWorld',
   data () {
     return {
-      loading: true, busy: false, productsLoading: false, session: null, profile: {},
+      loading: true, busy: false, productsLoading: false, session: null, profile: {}, inventoryTypes: [{value:'meat',label:'لحوم'},{value:'poultry',label:'دواجن'},{value:'burger',label:'برجر'},{value:'bread',label:'عيش ومخبوزات'},{value:'vegetable',label:'خضروات'},{value:'dairy',label:'ألبان وأجبان'},{value:'sauce',label:'صوصات'},{value:'spice',label:'توابل'},{value:'oil',label:'زيوت'},{value:'packaging',label:'تغليف'},{value:'cleaning',label:'نظافة'},{value:'other',label:'أخرى'}], inventoryDraft:{display_name:'',item_type:'other',unit:'كجم',min_quantity:0}, stockDraft:{inventory_item_id:'',movement_type:'purchase_receipt',quantity:0,unit_cost:0,notes:''}, recipeDraft:{product_id:'',inventory_item_id:'',quantity_per_unit:0}, inventoryRecipes:[], editingInventoryId:null,
       isEnglish: localStorage.getItem("somer-pos-language") === "en",
       staffModal: false, staffError: "", openShift: null, shiftHistory: [], shiftOpeningCash: 0, shiftClosingCash: 0, shiftNote: "", expenseAmount: 0, expenseReason: "", expensePayee: "", lastShiftReport: null, printerSettings: [], printJobs: [], staffForm: { display_name: "", email: "", password: "", role: "cashier" },
       page: 'cashier', mobileNav: false, login: { email: '', password: '' },
@@ -559,14 +559,60 @@ export default {
       if(error)this.notify('تعذر تحديث الموظف: '+error.message,'error');else{Object.assign(person,data);this.notify('تم تحديث بيانات الموظف')}
     },
     async loadInventory () {
-      const { data, error } = await supabase.from('inventory_items').select('*').eq('is_active', true).order('display_name')
-      if (!error) this.inventory = data || []
+      const [{data,error},{data:recipes,error:recipeError}] = await Promise.all([
+        supabase.from('inventory_items').select('*').order('display_name'),
+        supabase.from('product_recipes').select('*').order('created_at')
+      ])
+      if(error){this.notify('تعذر تحميل المخزون: '+error.message,'error');return}
+      if(recipeError){this.notify('تعذر تحميل وصفات المخزون: '+recipeError.message,'error');return}
+      this.inventory=data||[];this.inventoryRecipes=recipes||[]
+    },
+    inventoryTypeName(type){return this.inventoryTypes.find(x=>x.value===type)?.label||'أخرى'},
+    inventoryName(id){return this.inventory.find(x=>x.id===id)?.display_name||'خامة'},
+    inventoryUnit(id){return this.inventory.find(x=>x.id===id)?.unit||''},
+    productName(id){return this.products.find(x=>x.id===id)?.name||'منتج'},
+    editInventoryItem(item){this.editingInventoryId=item.id;this.inventoryDraft={display_name:item.display_name,item_type:item.item_type,unit:item.unit,min_quantity:Number(item.min_quantity)||0}},
+    async saveInventoryItem(){
+      if(!this.isAdmin||!this.inventoryDraft.display_name.trim())return
+      this.busy=true
+      const payload={display_name:this.inventoryDraft.display_name.trim(),item_type:this.inventoryDraft.item_type,unit:this.inventoryDraft.unit,min_quantity:Number(this.inventoryDraft.min_quantity)||0,is_active:true}
+      const query=this.editingInventoryId?supabase.from('inventory_items').update(payload).eq('id',this.editingInventoryId):supabase.from('inventory_items').insert(payload)
+      const {error}=await query;this.busy=false
+      if(error){this.notify('تعذر حفظ صنف المخزون: '+error.message,'error');return}
+      this.inventoryDraft={display_name:'',item_type:'other',unit:'كجم',min_quantity:0};this.editingInventoryId=null
+      this.notify('تم حفظ صنف المخزون');await this.loadInventory()
+    },
+    async recordStockMovement(){
+      if(!this.isAdmin)return
+      const qty=Number(this.stockDraft.quantity);if(!qty){this.notify('أدخل كمية صحيحة','error');return}
+      const signed=this.stockDraft.movement_type==='waste'?-Math.abs(qty):this.stockDraft.movement_type==='adjustment'?qty:Math.abs(qty)
+      this.busy=true
+      const {error}=await supabase.from('stock_movements').insert({inventory_item_id:this.stockDraft.inventory_item_id,movement_type:this.stockDraft.movement_type,quantity_change:signed,recorded_by:this.session.user.id,notes:this.stockDraft.notes||null})
+      if(!error&&Number(this.stockDraft.unit_cost)>0)await supabase.from('inventory_items').update({unit_cost:Number(this.stockDraft.unit_cost)}).eq('id',this.stockDraft.inventory_item_id)
+      this.busy=false
+      if(error){this.notify('لم يتم تسجيل حركة المخزون: '+error.message,'error');return}
+      this.stockDraft={inventory_item_id:'',movement_type:'purchase_receipt',quantity:0,unit_cost:0,notes:''};this.notify('تم تسجيل الحركة وتحديث الرصيد');await this.loadInventory()
+    },
+    async saveRecipe(){
+      if(!this.isAdmin)return
+      this.busy=true
+      const {error}=await supabase.from('product_recipes').upsert({product_id:this.recipeDraft.product_id,inventory_item_id:this.recipeDraft.inventory_item_id,quantity_per_unit:Number(this.recipeDraft.quantity_per_unit)},{onConflict:'product_id,inventory_item_id'})
+      this.busy=false
+      if(error){this.notify('تعذر حفظ الوصفة: '+error.message,'error');return}
+      this.recipeDraft={product_id:'',inventory_item_id:'',quantity_per_unit:0};this.notify('تم حفظ مكون الوصفة');await this.loadInventory()
+    },
+    async deleteRecipe(recipe){
+      if(!this.isAdmin)return
+      const {error}=await supabase.from('product_recipes').delete().eq('id',recipe.id)
+      if(error){this.notify('تعذر حذف المكون: '+error.message,'error');return}
+      await this.loadInventory();this.notify('تم حذف مكون الوصفة')
     },
     go (page) {
       if (['dashboard', 'products', 'inventory', 'staff'].includes(page) && !this.isAdmin) return
       if (page === 'cashier' && !this.canSell) return
       this.page = page; this.mobileNav = false
       if (page === 'orders') this.loadOrders()
+      if (page === 'inventory') { this.loadInventory(); this.loadProducts() }
       if (page === 'products') { this.loadCategories(); this.loadProducts() }
       if (page === 'dashboard') this.loadAdminData()
       if (page === 'shifts') this.loadShiftData()
