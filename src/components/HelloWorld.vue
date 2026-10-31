@@ -1,5 +1,5 @@
 <template>
-  <div class="app-shell" :dir="isEnglish ? 'ltr' : 'rtl'" :lang="isEnglish ? 'en' : 'ar">
+  <div class="app-shell" :dir="isEnglish ? 'ltr' : 'rtl'" :lang="isEnglish ? 'en' : 'ar'">
     <div v-if="loading" class="boot-screen">
       <div class="brand-mark">س</div>
       <strong>سومر</strong>
