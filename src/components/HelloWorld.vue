@@ -53,7 +53,6 @@
           <button class="side-link" :class="{active:page==='products'}" @click="go('products')"><span>◈</span> {{ isEnglish ? "Products & Menu" : "المنتجات والمنيو" }}</button>
           <button class="side-link" :class="{active:page==='inventory'}" @click="go('inventory')"><span>▥</span> {{ isEnglish ? "Inventory" : "المخزون" }}</button>
           <button class="side-link" :class="{active:page==='staff'}" @click="go('staff')"><span>♙</span> {{ isEnglish ? "Staff" : "الموظفون" }}</button>
-          <button class="side-link" :class="{active:page==='printers'}" @click="go('printers')"><span>▤</span> {{ isEnglish ? "Printers" : "الطابعات والطباعة" }}</button>
         </template>
         <button class="side-link" :class="{active:page==='printers'}" @click="go('printers')"><span>▤</span> {{ isEnglish ? "Print Queue" : "الطباعة وتجهيز الطلبات" }}</button>
         <div class="side-bottom">
@@ -225,7 +224,7 @@
         </section>
 
         <section v-if="page==='printers'" class="page-content">
-          <div class="page-intro"><div><span class="kicker gold">PRINT STATIONS</span><h2>الطابعات والطباعة</h2><p>حدد اسم الطابعة ومسار الأصناف وعدد النسخ. الطباعة من المتصفح تحتاج تأكيد نافذة الطباعة.</p></div><button class="outline-btn" @click="loadPrintData">↻ تحديث</button></div>
+          <div class="page-intro"><div><span class="kicker gold">PRINT STATIONS</span><h2>الطابعات والطباعة</h2><p>تابع تذاكر الطلبات واطبعها حسب مسار المطبخ. إعدادات الطابعات متاحة لمدير النظام فقط.</p></div><button class="outline-btn" @click="loadPrintData">↻ تحديث</button></div>
           <div v-if="isAdmin" class="surface-card">
             <div v-for="printer in printerSettings" :key="printer.route" class="printer-setting-row">
               <div class="staff-info"><b>{{ printer.display_name }}</b><small>مسار: {{ routeLabel(printer.route) }}</small></div>
