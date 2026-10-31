@@ -194,11 +194,11 @@
             <div class="toolbar"><div class="filter-tabs"><button :class="{active:orderFilter==='all'}" @click="orderFilter='all'">الكل</button><button :class="{active:orderFilter==='confirmed'}" @click="orderFilter='confirmed'">مؤكد</button><button :class="{active:orderFilter==='preparing'}" @click="orderFilter='preparing'">قيد التحضير</button><button :class="{active:orderFilter==='ready'}" @click="orderFilter='ready'">جاهز</button><button :class="{active:orderFilter==='completed'}" @click="orderFilter='completed'">مكتمل</button></div></div>
             <div v-for="o in filteredOrders" :key="o.id" class="order-admin-row">
               <div class="order-admin-id"><b>#{{ o.order_number }}</b><small>{{ formatDate(o.created_at) }}</small></div>
-              <div class="order-admin-type"><b>{{ o.order_type==='delivery'?'دليفري':'صالة' }}</b><small>{{ o.customer_name || 'عميل مباشر' }}</small></div>
+              <div class="order-admin-type"><b>{{ o.order_type==='delivery'?'دليفري':'صالة' }}</b><small>{{ o.customer_name || 'عميل مباشر' }} · {{ employeeLabel(o) }}</small></div>
               <div class="order-admin-address">{{ o.order_type==='delivery'?(o.delivery_address||'—'):'طلب صالة' }}</div>
               <strong>{{ money(o.total) }} ج</strong>
               <span class="status-pill" :class="o.status">{{ statusLabel(o.status) }}</span>
-              <select v-if="isAdmin" :value="o.status" @change="updateOrderStatus(o,$event.target.value)" class="status-select"><option value="confirmed">مؤكد</option><option value="preparing">قيد التحضير</option><option value="ready">جاهز</option><option value="out_for_delivery">خرج للتوصيل</option><option value="completed">مكتمل</option><option value="cancelled">ملغي</option></select>
+              <select v-if="canUpdateOrder" :value="o.status" @change="updateOrderStatus(o,$event.target.value)" class="status-select"><option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select>
             </div>
             <div v-if="!filteredOrders.length" class="empty-state">لا توجد طلبات في هذا التصنيف.</div>
           </div>
@@ -209,7 +209,7 @@
           <div class="page-intro"><div><span class="kicker gold">SHIFT CONTROL</span><h2>الشيفت والحساب</h2><p>افتح شيفتك وسجل العهدة، ثم اقفلها بمراجعة النقدية.</p></div><button class="outline-btn" @click="loadShiftData">↻ تحديث</button></div>
           <div class="surface-card">
             <div v-if="openShift" class="shift-summary">
-              <h3>شيفت مفتوح</h3><p>بدأ في: {{ formatDate(openShift.opened_at) }} · العهدة: {{ money(openShift.opening_cash) }} جنيه</p>
+              <h3>شيفت مفتوح باسم {{ profile.display_name }}</h3><p>بدأ في: {{ formatDate(openShift.opened_at) }} · العهدة: {{ money(openShift.opening_cash) }} جنيه</p>
               <div class="form-grid"><div class="field"><label>النقدية الموجودة فعليًا عند الإقفال</label><input v-model.number="shiftClosingCash" type="number" min="0" step="0.01"></div><div class="field"><label>ملاحظة الإقفال</label><input v-model="shiftNote" placeholder="ملاحظات اختيارية"></div></div>
               <button class="primary-btn" :disabled="busy" @click="closeShift">إقفال الشيفت وحفظ التسوية</button>
               <div class="shift-expense"><h3>تسجيل مصروف من عهدة الشيفت</h3><div class="form-grid"><div class="field"><label>المبلغ بالجنيه</label><input v-model.number="expenseAmount" type="number" min="0.01" step="0.01"></div><div class="field"><label>سبب المصروف</label><input v-model="expenseReason" placeholder="مثال: شراء مستلزمات"></div><div class="field"><label>اسم المستلم (اختياري)</label><input v-model="expensePayee"></div></div><button class="outline-btn" :disabled="busy" @click="recordExpense">تسجيل المصروف</button></div>
@@ -326,8 +326,10 @@ export default {
     }
   },
   computed: {
-    isAdmin () { return ['owner_admin', 'manager'].includes(this.profile.role) },
+    isAdmin () { return this.profile.role === 'owner_admin' },
     canSell () { return ['owner_admin','manager','cashier'].includes(this.profile.role) },
+    canUpdateOrder () { return ['owner_admin','manager','cashier','kitchen','delivery'].includes(this.profile.role) },
+    statusOptions () { const r=this.profile.role; if(r==='kitchen') return [{value:'preparing',label:'قيد التحضير'},{value:'ready',label:'جاهز'}]; if(r==='delivery') return [{value:'out_for_delivery',label:'خرج للتوصيل'},{value:'completed',label:'مكتمل'}]; if(r==='cashier') return [{value:'confirmed',label:'مؤكد'},{value:'cancelled',label:'ملغي'}]; return [{value:'confirmed',label:'مؤكد'},{value:'preparing',label:'قيد التحضير'},{value:'ready',label:'جاهز'},{value:'out_for_delivery',label:'خرج للتوصيل'},{value:'completed',label:'مكتمل'},{value:'cancelled',label:'ملغي'}] },
     roleLabel () { return this.roleName(this.profile.role) },
     pageTitle () {
       return this.isEnglish ? ({ cashier: 'Point of Sale', dashboard: 'Dashboard', products: 'Products & Menu', orders: 'Orders', inventory: 'Inventory', staff: 'Staff', shifts: 'My Shift', printers: 'Printers' })[this.page] || 'Somer' : ({ cashier: 'نقطة البيع', dashboard: 'لوحة التحكم', products: 'المنتجات والمنيو', orders: 'الطلبات', inventory: 'المخزون', staff: 'الموظفون', shifts: 'الشيفت والحساب', printers: 'الطابعات والطباعة' })[this.page] || 'سومر'
@@ -422,8 +424,18 @@ export default {
         return
       }
       this.profile = data
+      this.error = ''
       await Promise.all([this.loadCategories(), this.loadProducts(), this.loadOrders()])
       if (this.isAdmin) await this.loadAdminData()
+      if (!this.isAdmin) {
+        const { data: currentShift, error: shiftError } = await supabase.rpc('get_my_open_shift')
+        if (shiftError) this.notify('تعذر قراءة الشيفت: ' + shiftError.message, 'error')
+        else if (!currentShift) {
+          const { data: started, error: startError } = await supabase.rpc('open_staff_shift', { p_opening_cash: 0, p_note: 'بدء تلقائي عند تسجيل دخول الموظف' })
+          if (startError) this.notify('تم الدخول لكن تعذر بدء الشيفت: ' + startError.message, 'error')
+          else { this.openShift = started; this.notify('تم تسجيل حضور ' + this.profile.display_name + ' وبدء الشيفت تلقائياً') }
+        } else this.openShift = currentShift
+      }
       this.page = this.canSell ? 'cashier' : 'orders'
     },
     async loadCategories () {
@@ -459,10 +471,12 @@ export default {
       if (!error) this.staff = data || []
     },
     async loadShiftData () {
-      const { data: current } = await supabase.rpc('get_my_open_shift')
+      const { data: current, error: currentError } = await supabase.rpc('get_my_open_shift')
+      if (currentError) { this.notify('تعذر قراءة الشيفت الحالي: ' + currentError.message, 'error'); return }
       this.openShift = current || null
-      const { data } = await supabase.from('shifts').select('*').order('opened_at',{ascending:false}).limit(30)
-      this.shiftHistory = data || []
+      const { data, error } = await supabase.from('shifts').select('*').order('opened_at',{ascending:false}).limit(30)
+      if (error) this.notify('تعذر قراءة سجل الشيفتات: ' + error.message, 'error')
+      else this.shiftHistory = data || []
     },
     async openShift () {
       this.busy=true
@@ -646,7 +660,8 @@ export default {
     },
     categoryName (id) { return this.categories.find(c => c.id === id)?.name || 'بدون قسم' },
     statusLabel (s) { return ({ draft: 'مسودة', confirmed: 'مؤكد', preparing: 'قيد التحضير', ready: 'جاهز', out_for_delivery: 'خرج للتوصيل', completed: 'مكتمل', cancelled: 'ملغي' })[s] || s },
-    roleName (r) { return ({ owner_admin: 'مدير النظام', manager: 'مدير', cashier: 'كاشير', kitchen: 'مطبخ', delivery: 'دليفري' })[r] || 'موظف' },
+    roleName (r) { return ({ owner_admin: 'مدير النظام', manager: 'مشرف تشغيل', cashier: 'كاشير', kitchen: 'مطبخ', delivery: 'دليفري' })[r] || 'موظف' },
+    employeeLabel (order) { if (order.employee_id === this.session?.user?.id) return this.profile.display_name || 'الموظف الحالي'; const person=this.staff.find(x=>x.id===order.employee_id); return person?.display_name || 'موظف مسجل' },
     routeLabel (r) { return ({ main: 'رئيسية', shawarma: 'شاورما', burger: 'برجر' })[r] || 'رئيسية' },
     formatDate (value) { return new Date(value).toLocaleString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }
   }
