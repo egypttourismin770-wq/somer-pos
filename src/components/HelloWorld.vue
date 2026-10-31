@@ -244,15 +244,33 @@
         </section>
 
         <section v-if="page==='inventory' && isAdmin" class="page-content">
-          <div class="page-intro"><div><span class="kicker gold">STOCK CONTROL</span><h2>المخزون</h2><p>المواد الأساسية المسجلة في قاعدة البيانات.</p></div><button class="outline-btn" @click="loadInventory">↻ تحديث</button></div>
-          <div class="inventory-grid">
-            <div v-for="item in inventory" :key="item.id" class="inventory-card"><div class="inventory-symbol">{{ item.item_type==='meat'?'◆':'▰' }}</div><div><b>{{ item.display_name }}</b><small>{{ item.item_type==='meat'?'لحوم':'خبز' }}</small></div><strong>{{ money(item.current_quantity) }} <small>{{ item.unit }}</small></strong></div>
-            <div v-if="!inventory.length" class="empty-state full">لا توجد مواد مخزون مضافة بعد. يمكنك تجهيز الأصناف الأساسية من قاعدة البيانات أو لاحقاً من شاشة إدارة المخزون.</div>
-          </div>
-          <div class="info-note">تنبيه: خصم المخزون التلقائي غير مفعل في هذه النسخة؛ لم يتم تحديد توقيت الخصم بعد، لذلك لن نخصم كميات بشكل تلقائي أو غير مؤكد.</div>
-        </section>
-
-        <!-- STAFF -->
+  <div class="page-intro"><div><span class="kicker gold">STOCK CONTROL</span><h2>المخزون وحركة الأصناف</h2><p>إدارة الخامات والأرصدة والتوريد والهالك والوصفات.</p></div><button class="outline-btn" @click="loadInventory">↻ تحديث</button></div>
+  <div class="surface-card"><h3>إضافة صنف مخزون</h3><div class="form-grid">
+    <div class="field"><label>اسم الصنف</label><input v-model.trim="inventoryDraft.display_name"></div>
+    <div class="field"><label>التصنيف</label><select v-model="inventoryDraft.item_type"><option v-for="t in inventoryTypes" :key="t.value" :value="t.value">{{ t.label }}</option></select></div>
+    <div class="field"><label>الوحدة</label><select v-model="inventoryDraft.unit"><option>كجم</option><option>جرام</option><option>لتر</option><option>مل</option><option>قطعة</option><option>عبوة</option><option>وحدة</option></select></div>
+    <div class="field"><label>حد التنبيه</label><input v-model.number="inventoryDraft.min_quantity" type="number" min="0" step="0.001"></div>
+  </div><button class="primary-btn" :disabled="busy || !inventoryDraft.display_name" @click="saveInventoryItem">حفظ الصنف</button></div>
+  <div class="surface-card" style="margin-top:14px"><h3>تسجيل وارد أو صرف أو هالك أو جرد</h3><div class="form-grid">
+    <div class="field"><label>الصنف</label><select v-model="stockDraft.inventory_item_id"><option value="">اختر الصنف</option><option v-for="i in inventory" :key="i.id" :value="i.id">{{ i.display_name }} ({{ i.unit }})</option></select></div>
+    <div class="field"><label>الحركة</label><select v-model="stockDraft.movement_type"><option value="purchase_receipt">وارد / شراء</option><option value="opening_stock">رصيد افتتاحي</option><option value="waste">هالك / تالف</option><option value="return">مرتجع</option><option value="adjustment">تسوية جرد</option></select></div>
+    <div class="field"><label>الكمية</label><input v-model.number="stockDraft.quantity" type="number" step="0.001"></div>
+    <div class="field"><label>تكلفة الوحدة</label><input v-model.number="stockDraft.unit_cost" type="number" min="0" step="0.01"></div>
+    <div class="field full"><label>ملاحظات</label><input v-model="stockDraft.notes"></div>
+  </div><button class="primary-btn" :disabled="busy || !stockDraft.inventory_item_id || !stockDraft.quantity" @click="recordStockMovement">تسجيل الحركة</button></div>
+  <div class="surface-card" style="margin-top:14px"><h3>أرصدة المخزون ({{ inventory.length }} صنف)</h3><div class="admin-product-list">
+    <div v-for="item in inventory" :key="item.id" class="admin-product-row"><div class="inventory-symbol">▰</div><div class="admin-product-main"><b>{{ item.display_name }}</b><small>{{ inventoryTypeName(item.item_type) }} · حد التنبيه {{ money(item.min_quantity) }} {{ item.unit }}</small></div><strong class="admin-price">{{ money(item.current_quantity) }} {{ item.unit }}</strong><span class="active-label" :class="{inactive:Number(item.current_quantity)<=Number(item.min_quantity)}">{{ Number(item.current_quantity)<=Number(item.min_quantity)?'يحتاج توريد':'متاح' }}</span><button class="icon-btn" @click="editInventoryItem(item)">✎</button></div>
+    <div v-if="!inventory.length" class="empty-state">لا توجد أصناف.</div></div></div>
+  <div class="surface-card" style="margin-top:14px"><h3>وصفات المنتجات وربطها بالخامات</h3><p class="muted">حدد استهلاك كل خامة للمنتج الواحد؛ بعدها تخصم الطلبات الجديدة تلقائيًا.</p><div class="form-grid">
+    <div class="field"><label>منتج المنيو</label><select v-model="recipeDraft.product_id"><option value="">اختر المنتج</option><option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option></select></div>
+    <div class="field"><label>الخامة</label><select v-model="recipeDraft.inventory_item_id"><option value="">اختر خامة</option><option v-for="i in inventory" :key="i.id" :value="i.id">{{ i.display_name }} ({{ i.unit }})</option></select></div>
+    <div class="field"><label>الكمية لكل منتج</label><input v-model.number="recipeDraft.quantity_per_unit" type="number" min="0.001" step="0.001"></div>
+  </div><button class="primary-btn" :disabled="busy || !recipeDraft.product_id || !recipeDraft.inventory_item_id || !recipeDraft.quantity_per_unit" @click="saveRecipe">حفظ مكون الوصفة</button>
+  <div v-for="r in inventoryRecipes" :key="r.id" class="staff-row"><div class="staff-info"><b>{{ productName(r.product_id) }} ← {{ inventoryName(r.inventory_item_id) }}</b><small>{{ money(r.quantity_per_unit) }} {{ inventoryUnit(r.inventory_item_id) }} لكل منتج</small></div><button class="icon-btn danger" @click="deleteRecipe(r)">×</button></div>
+  <div v-if="!inventoryRecipes.length" class="empty-state compact">لم يتم ربط وصفات بعد؛ لن تخصم خامات قبل تعريف الاستهلاك.</div></div>
+  <div class="info-note">كل الأرصدة تبدأ بصفر. سجّل الجرد الفعلي أو التوريد أولًا. لا يتم افتراض وصفة أي منتج.</div>
+</section>
+<!-- STAFF -->
         <section v-if="page==='staff' && isAdmin" class="page-content">
           <div class="page-intro"><div><span class="kicker gold">TEAM ACCESS</span><h2>{{ isEnglish ? 'Staff & Permissions' : 'الموظفون والصلاحيات' }}</h2><p>{{ isEnglish ? 'Manage employee accounts and roles.' : 'عرض الحسابات المرتبطة بملفات الموظفين.' }}</p></div><button class="primary-btn" @click="openStaffModal">＋ {{ isEnglish ? 'Add employee' : 'إضافة موظف' }}</button></div>
           <div class="surface-card">
