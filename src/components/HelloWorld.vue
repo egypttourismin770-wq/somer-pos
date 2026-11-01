@@ -281,7 +281,7 @@
         <section v-if="page==='staff' && isAdmin && adminUnlocked" class="page-content">
           <div class="page-intro"><div><span class="kicker gold">TEAM ACCESS</span><h2>{{ isEnglish ? 'Staff & Permissions' : 'الموظفون والصلاحيات' }}</h2><p>{{ isEnglish ? 'Manage employee accounts and roles.' : 'عرض الحسابات المرتبطة بملفات الموظفين.' }}</p></div><button class="primary-btn" @click="openStaffModal">＋ {{ isEnglish ? 'Add employee' : 'إضافة موظف' }}</button></div>
           <div class="surface-card">
-            <div v-for="person in staff" :key="person.id" class="staff-row"><div class="profile-avatar">{{ (person.display_name||'م').slice(0,1) }}</div><div class="staff-info"><b>{{ person.display_name || 'موظف' }}</b><small>{{ person.id }}</small></div><span class="role-pill">{{ roleName(person.role) }}</span><span class="active-label" :class="{inactive:!person.is_active}">{{ person.is_active?'نشط':'موقوف' }}</span><select :value="person.role" @change="updateStaff(person,{role:$event.target.value})"><option value="manager">مدير</option><option value="cashier">كاشير</option><option value="kitchen">مطبخ</option><option value="delivery">دليفري</option></select><button class="outline-btn" @click="updateStaff(person,{is_active:!person.is_active})">{{ person.is_active?'إيقاف':'تفعيل' }}</button></div>
+            <div v-for="person in staff" :key="person.id" class="staff-row"><div class="profile-avatar">{{ (person.display_name||'م').slice(0,1) }}</div><div class="staff-info"><b>{{ person.display_name || 'موظف' }}</b><small>{{ person.id }}</small><small v-if="staffStats.find(x=>x.id===person.id)">{{ staffStats.find(x=>x.id===person.id).openShift ? 'شيفت مفتوح منذ '+formatDate(staffStats.find(x=>x.id===person.id).openShift.opened_at) : (staffStats.find(x=>x.id===person.id).latestShift ? 'آخر شيفت: '+formatDate(staffStats.find(x=>x.id===person.id).latestShift.opened_at) : 'لم يفتح شيفت بعد') }} · {{ staffStats.find(x=>x.id===person.id).ordersCount }} أوردر · مبيعات {{ money(staffStats.find(x=>x.id===person.id).salesTotal) }} ج</small></div><span class="role-pill">{{ roleName(person.role) }}</span><span class="active-label" :class="{inactive:!person.is_active}">{{ person.is_active?'نشط':'موقوف' }}</span><select :value="person.role" @change="updateStaff(person,{role:$event.target.value})"><option value="manager">مدير</option><option value="cashier">كاشير</option><option value="kitchen">مطبخ</option><option value="delivery">دليفري</option></select><button class="outline-btn" @click="updateStaff(person,{is_active:!person.is_active})">{{ person.is_active?'إيقاف':'تفعيل' }}</button></div>
             <div v-if="!staff.length" class="empty-state">{{ isEnglish ? 'No employee accounts linked yet.' : 'لا توجد حسابات موظفين مرتبطة حتى الآن.' }}</div>
           </div>
           <div class="info-note">{{ isEnglish ? 'Only authorized administrators can create employee accounts. Each employee receives a role and an active profile.' : 'إنشاء حساب الموظف وتحديد دوره يتم من هنا للمديرين المعتمدين فقط، ولا يوجد تسجيل عام مفتوح.' }}</div>
@@ -348,7 +348,7 @@ export default {
     return {
       loading: true, busy: false, productsLoading: false, session: null, profile: {}, adminUnlocked: false, adminModal: false, adminPassword: '', adminError: '', inventoryTypes: [{value:'meat',label:'لحوم'},{value:'poultry',label:'دواجن'},{value:'burger',label:'برجر'},{value:'bread',label:'عيش ومخبوزات'},{value:'vegetable',label:'خضروات'},{value:'dairy',label:'ألبان وأجبان'},{value:'sauce',label:'صوصات'},{value:'spice',label:'توابل'},{value:'oil',label:'زيوت'},{value:'packaging',label:'تغليف'},{value:'cleaning',label:'نظافة'},{value:'other',label:'أخرى'}], inventoryDraft:{display_name:'',item_type:'other',unit:'كجم',min_quantity:0}, stockDraft:{inventory_item_id:'',movement_type:'purchase_receipt',quantity:0,unit_cost:0,notes:''}, recipeDraft:{product_id:'',inventory_item_id:'',quantity_per_unit:0}, inventoryRecipes:[], stockMovements:[], editingInventoryId:null,
       isEnglish: localStorage.getItem("somer-pos-language") === "en",
-      staffModal: false, staffError: "", currentShift: null, shiftHistory: [], shiftOpeningCash: 0, shiftClosingCash: 0, shiftNote: "", expenseAmount: 0, expenseReason: "", expensePayee: "", lastShiftReport: null, printerSettings: [], printJobs: [], staffForm: { display_name: "", email: "", password: "", role: "cashier" },
+      staffModal: false, staffError: "", staffStats: [], currentShift: null, shiftHistory: [], shiftOpeningCash: 0, shiftClosingCash: 0, shiftNote: "", expenseAmount: 0, expenseReason: "", expensePayee: "", lastShiftReport: null, printerSettings: [], printJobs: [], staffForm: { display_name: "", email: "", password: "", role: "cashier" },
       page: 'cashier', mobileNav: false, login: { email: '', password: '' },
       error: '', notice: { text: '', type: 'success' }, clock: '', dateLabel: '',
       clockTimer: null, authSubscription: null,
@@ -501,8 +501,21 @@ export default {
       await Promise.all([this.loadOrders(), this.loadStaff(), this.loadInventory()])
     },
     async loadStaff () {
-      const { data, error } = await supabase.from('staff_profiles').select('*').order('created_at', { ascending: false })
-      if (!error) this.staff = data || []
+      const [{data:people,error},{data:shifts, error:shiftError},{data:orders,error:orderError}] = await Promise.all([
+        supabase.from('staff_profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('shifts').select('id,employee_id,status,opened_at,closed_at').order('opened_at',{ascending:false}).limit(300),
+        supabase.from('orders').select('employee_id,shift_id,total,status').order('created_at',{ascending:false}).limit(1000)
+      ])
+      if(error){this.notify('تعذر تحميل الموظفين: '+error.message,'error');return}
+      if(shiftError||orderError)this.notify('تم تحميل الموظفين، لكن تعذر تحميل ملخص الشيفتات والطلبات.','error')
+      this.staff=people||[]
+      this.staffStats=this.staff.map(person=>{
+        const personShifts=(shifts||[]).filter(x=>x.employee_id===person.id)
+        const openShift=personShifts.find(x=>x.status==='open')||null
+        const shiftIds=personShifts.map(x=>x.id)
+        const personOrders=(orders||[]).filter(x=>x.employee_id===person.id&&shiftIds.includes(x.shift_id))
+        return {id:person.id,openShift,latestShift:personShifts[0]||null,ordersCount:personOrders.length,salesTotal:personOrders.filter(x=>x.status!=='cancelled').reduce((sum,x)=>sum+Number(x.total||0),0)}
+      })
     },
     async loadShiftData () {
       const { data: current, error: currentError } = await supabase.rpc('get_my_open_shift')
