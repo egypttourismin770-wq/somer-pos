@@ -209,15 +209,15 @@
         <section v-if="page==='shifts'" class="page-content">
           <div class="page-intro"><div><span class="kicker gold">SHIFT CONTROL</span><h2>الشيفت والحساب</h2><p>افتح شيفتك وسجل العهدة، ثم اقفلها بمراجعة النقدية.</p></div><button class="outline-btn" @click="loadShiftData">↻ تحديث</button></div>
           <div class="surface-card">
-            <div v-if="openShift" class="shift-summary">
-              <h3>شيفت مفتوح باسم {{ profile.display_name }}</h3><p>بدأ في: {{ formatDate(openShift.opened_at) }} · العهدة: {{ money(openShift.opening_cash) }} جنيه</p>
+            <div v-if="currentShift" class="shift-summary">
+              <h3>شيفت مفتوح باسم {{ profile.display_name }}</h3><p>بدأ في: {{ formatDate(currentShift.opened_at) }} · العهدة: {{ money(currentShift.opening_cash) }} جنيه</p>
               <div class="form-grid"><div class="field"><label>النقدية الموجودة فعليًا عند الإقفال</label><input v-model.number="shiftClosingCash" type="number" min="0" step="0.01"></div><div class="field"><label>ملاحظة الإقفال</label><input v-model="shiftNote" placeholder="ملاحظات اختيارية"></div></div>
               <button class="primary-btn" :disabled="busy" @click="closeShift">إقفال الشيفت وحفظ التسوية</button>
               <div class="shift-expense"><h3>تسجيل مصروف من عهدة الشيفت</h3><div class="form-grid"><div class="field"><label>المبلغ بالجنيه</label><input v-model.number="expenseAmount" type="number" min="0.01" step="0.01"></div><div class="field"><label>سبب المصروف</label><input v-model="expenseReason" placeholder="مثال: شراء مستلزمات"></div><div class="field"><label>اسم المستلم (اختياري)</label><input v-model="expensePayee"></div></div><button class="outline-btn" :disabled="busy" @click="recordExpense">تسجيل المصروف</button></div>
             </div>
             <div v-else class="shift-summary"><h3>لا يوجد شيفت مفتوح</h3><p>ابدأ الشيفت بتسجيل مبلغ العهدة الموجود في الدرج.</p>
               <div class="form-grid"><div class="field"><label>عهدة بداية الشيفت بالجنيه</label><input v-model.number="shiftOpeningCash" type="number" min="0" step="0.01"></div><div class="field"><label>ملاحظة بداية الشيفت</label><input v-model="shiftNote" placeholder="اختياري"></div></div>
-              <button class="primary-btn" :disabled="busy" @click="openShift">فتح الشيفت</button>
+              <button class="primary-btn" :disabled="busy" @click="startShift">فتح الشيفت</button>
             </div>
             <div v-if="lastShiftReport" class="info-note">كشف الحساب: المبيعات {{ money(lastShiftReport.sales_total) }} ج · الخصومات {{ money(lastShiftReport.discounts_total) }} ج · المتوقع بالدرج {{ money(lastShiftReport.cash_expected) }} ج · المعدود {{ money(lastShiftReport.cash_counted) }} ج · الفرق {{ money(lastShiftReport.difference) }} ج <button class="outline-btn" @click="printShiftReport">طباعة التقرير</button></div>
           </div>
@@ -348,7 +348,7 @@ export default {
     return {
       loading: true, busy: false, productsLoading: false, session: null, profile: {}, adminUnlocked: false, adminModal: false, adminPassword: '', adminError: '', inventoryTypes: [{value:'meat',label:'لحوم'},{value:'poultry',label:'دواجن'},{value:'burger',label:'برجر'},{value:'bread',label:'عيش ومخبوزات'},{value:'vegetable',label:'خضروات'},{value:'dairy',label:'ألبان وأجبان'},{value:'sauce',label:'صوصات'},{value:'spice',label:'توابل'},{value:'oil',label:'زيوت'},{value:'packaging',label:'تغليف'},{value:'cleaning',label:'نظافة'},{value:'other',label:'أخرى'}], inventoryDraft:{display_name:'',item_type:'other',unit:'كجم',min_quantity:0}, stockDraft:{inventory_item_id:'',movement_type:'purchase_receipt',quantity:0,unit_cost:0,notes:''}, recipeDraft:{product_id:'',inventory_item_id:'',quantity_per_unit:0}, inventoryRecipes:[], stockMovements:[], editingInventoryId:null,
       isEnglish: localStorage.getItem("somer-pos-language") === "en",
-      staffModal: false, staffError: "", openShift: null, shiftHistory: [], shiftOpeningCash: 0, shiftClosingCash: 0, shiftNote: "", expenseAmount: 0, expenseReason: "", expensePayee: "", lastShiftReport: null, printerSettings: [], printJobs: [], staffForm: { display_name: "", email: "", password: "", role: "cashier" },
+      staffModal: false, staffError: "", currentShift: null, shiftHistory: [], shiftOpeningCash: 0, shiftClosingCash: 0, shiftNote: "", expenseAmount: 0, expenseReason: "", expensePayee: "", lastShiftReport: null, printerSettings: [], printJobs: [], staffForm: { display_name: "", email: "", password: "", role: "cashier" },
       page: 'cashier', mobileNav: false, login: { email: '', password: '' },
       error: '', notice: { text: '', type: 'success' }, clock: '', dateLabel: '',
       clockTimer: null, authSubscription: null,
@@ -402,7 +402,7 @@ export default {
         // Do not call Supabase APIs inside onAuthStateChange; defer profile loading to avoid auth-lock deadlocks.
         window.setTimeout(() => { if (this.session?.user?.id === session.user.id) this.loadProfileAndStart() }, 0)
       } else if (!session) {
-        this.profile = {}; this.products = []; this.orders = []; this.cart = []; this.page = 'cashier'; this.openShift = null
+        this.profile = {}; this.products = []; this.orders = []; this.cart = []; this.page = 'cashier'; this.currentShift = null
       }
     })
     this.authSubscription = listener.subscription
@@ -468,7 +468,7 @@ export default {
       if (!this.isAdmin) {
         const { data: currentShift, error: shiftError } = await supabase.rpc('get_my_open_shift')
         if (shiftError) this.notify('تعذر قراءة الشيفت: ' + shiftError.message, 'error')
-        else this.openShift = currentShift || null
+        else this.currentShift = currentShift || null
       }
       this.page = this.canSell ? 'cashier' : 'orders'
     },
@@ -507,17 +507,17 @@ export default {
     async loadShiftData () {
       const { data: current, error: currentError } = await supabase.rpc('get_my_open_shift')
       if (currentError) { this.notify('تعذر قراءة الشيفت الحالي: ' + currentError.message, 'error'); return }
-      this.openShift = current || null
+      this.currentShift = current || null
       const { data, error } = await supabase.from('shifts').select('*').order('opened_at',{ascending:false}).limit(30)
       if (error) this.notify('تعذر قراءة سجل الشيفتات: ' + error.message, 'error')
       else this.shiftHistory = data || []
     },
-    async openShift () {
+    async startShift () {
       this.busy=true
       const {data,error}=await supabase.rpc('open_staff_shift',{p_opening_cash:Number(this.shiftOpeningCash)||0,p_note:this.shiftNote||null})
       this.busy=false
       if(error){this.notify('تعذر فتح الشيفت: '+error.message,'error');return}
-      this.openShift=data;this.notify('تم فتح الشيفت بنجاح');await this.loadShiftData()
+      this.currentShift=data;this.notify('تم فتح الشيفت بنجاح');await this.loadShiftData()
     },
     async recordExpense () {
       if(!this.expenseAmount||this.expenseAmount<=0||!this.expenseReason.trim()){this.notify('أدخل مبلغ المصروف وسببه','error');return}
@@ -528,12 +528,12 @@ export default {
       else{this.notify('تم تسجيل المصروف وخصمه من عهدة الشيفت');this.expenseAmount=0;this.expenseReason='';this.expensePayee=''}
     },
     async closeShift () {
-      if(!this.openShift)return
+      if(!this.currentShift)return
       this.busy=true
-      const {data,error}=await supabase.rpc('close_staff_shift',{p_shift_id:this.openShift.id,p_counted_cash:Number(this.shiftClosingCash)||0,p_note:this.shiftNote||null})
+      const {data,error}=await supabase.rpc('close_staff_shift',{p_shift_id:this.currentShift.id,p_counted_cash:Number(this.shiftClosingCash)||0,p_note:this.shiftNote||null})
       this.busy=false
       if(error){this.notify('تعذر إقفال الشيفت: '+error.message,'error');return}
-      this.lastShiftReport=data;this.openShift=null;this.notify('تم إقفال الشيفت وحفظ التسوية. اضغط طباعة التقرير عند الحاجة');await this.loadShiftData()
+      this.lastShiftReport=data;this.currentShift=null;this.notify('تم إقفال الشيفت وحفظ التسوية. اضغط طباعة التقرير عند الحاجة');await this.loadShiftData()
     },
     printShiftReport () {
       if(!this.lastShiftReport)return
