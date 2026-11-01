@@ -468,11 +468,7 @@ export default {
       if (!this.isAdmin) {
         const { data: currentShift, error: shiftError } = await supabase.rpc('get_my_open_shift')
         if (shiftError) this.notify('تعذر قراءة الشيفت: ' + shiftError.message, 'error')
-        else if (!currentShift) {
-          const { data: started, error: startError } = await supabase.rpc('open_staff_shift', { p_opening_cash: 0, p_note: 'بدء تلقائي عند تسجيل دخول الموظف' })
-          if (startError) this.notify('تم الدخول لكن تعذر بدء الشيفت: ' + startError.message, 'error')
-          else { this.openShift = started; this.notify('تم تسجيل حضور ' + this.profile.display_name + ' وبدء الشيفت تلقائياً') }
-        } else this.openShift = currentShift
+        else this.openShift = currentShift || null
       }
       this.page = this.canSell ? 'cashier' : 'orders'
     },
