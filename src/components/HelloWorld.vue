@@ -263,7 +263,7 @@
     <div class="field full"><label>ملاحظات</label><input v-model="stockDraft.notes"></div>
   </div><button class="primary-btn" :disabled="busy || !stockDraft.inventory_item_id || !stockDraft.quantity" @click="recordStockMovement">تسجيل الحركة</button></div>
   <div class="surface-card" style="margin-top:14px"><h3>أرصدة المخزون ({{ inventory.length }} صنف)</h3><div class="admin-product-list">
-    <div v-for="item in inventory" :key="item.id" class="admin-product-row"><div class="inventory-symbol">▰</div><div class="admin-product-main"><b>{{ item.display_name }}</b><small>{{ inventoryTypeName(item.item_type) }} · حد التنبيه {{ money(item.min_quantity) }} {{ item.unit }}</small></div><strong class="admin-price">{{ money(item.current_quantity) }} {{ item.unit }}</strong><span class="active-label" :class="{inactive:Number(item.current_quantity)<=Number(item.min_quantity)}">{{ Number(item.current_quantity)<=Number(item.min_quantity)?'يحتاج توريد':'متاح' }}</span><button class="icon-btn" @click="editInventoryItem(item)">✎</button></div>
+    <div v-for="item in inventory" :key="item.id" class="admin-product-row"><div class="inventory-symbol">▰</div><div class="admin-product-main"><b>{{ item.display_name }}</b><small>{{ inventoryTypeName(item.item_type) }} · حد التنبيه {{ money(item.min_quantity) }} {{ item.unit }}</small></div><strong class="admin-price">{{ money(item.current_quantity) }} {{ item.unit }}</strong><span class="active-label" :class="{inactive:Number(item.current_quantity)<=Number(item.min_quantity)}">{{ Number(item.current_quantity)<=Number(item.min_quantity)?'يحتاج توريد':'متاح' }}</span><button class="icon-btn" title="تعديل الخامة" @click="editInventoryItem(item)">✎</button><button class="icon-btn danger" title="حذف الخامة نهائيًا" @click="deleteInventoryItem(item)">🗑</button></div>
     <div v-if="!inventory.length" class="empty-state">لا توجد أصناف.</div></div></div>
   <div class="surface-card" style="margin-top:14px"><h3>سجل حركة المخزون</h3><p class="muted">آخر 100 حركة وارد وصرف واستهلاك وهالك، مع الموظف الذي سجلها.</p>
     <div v-for="m in stockMovements" :key="m.id" class="staff-row"><div class="staff-info"><b>{{ inventoryName(m.inventory_item_id) }} · {{ stockMovementName(m.movement_type) }}</b><small>{{ formatDate(m.created_at) }} · {{ employeeName(m.recorded_by) }}<span v-if="m.notes"> · {{ m.notes }}</span></small></div><strong>{{ Number(m.quantity_change)>0?'+':'' }}{{ money(m.quantity_change) }} {{ inventoryUnit(m.inventory_item_id) }}</strong></div>
@@ -529,11 +529,32 @@ export default {
     },
     async closeShift () {
       if(!this.currentShift)return
+      const counted=Number(this.shiftClosingCash)
+      if(!Number.isFinite(counted)||counted<0){this.notify('أدخل النقدية الموجودة فعليًا بشكل صحيح قبل الإقفال','error');return}
+      const shift=this.currentShift
+      const w=window.open('','_blank','width=520,height=760')
+      if(!w){this.notify('اسمح بالنوافذ المنبثقة حتى تتم طباعة كشف الإقفال تلقائيًا. لم يتم إقفال الشيفت.','error');return}
+      w.document.write('<html dir="rtl"><meta charset="utf-8"><body style="font-family:Arial;padding:24px">جاري تجهيز كشف الشيفت...</body></html>')
       this.busy=true
-      const {data,error}=await supabase.rpc('close_staff_shift',{p_shift_id:this.currentShift.id,p_counted_cash:Number(this.shiftClosingCash)||0,p_note:this.shiftNote||null})
+      const [{data:orders,error:ordersError},{data:expenses,error:expensesError}]=await Promise.all([
+        supabase.from('orders').select('id,order_number,order_type,status,total,discount,created_at').eq('shift_id',shift.id).order('created_at'),
+        supabase.from('expenses').select('amount,reason,payee_name,created_at').eq('shift_id',shift.id).order('created_at')
+      ])
+      if(ordersError||expensesError){this.busy=false;w.close();this.notify('تعذر تجهيز تفاصيل الشيفت؛ لم يتم الإقفال. '+(ordersError?.message||expensesError?.message),'error');return}
+      const orderIds=(orders||[]).map(o=>o.id)
+      let items=[]
+      if(orderIds.length){const result=await supabase.from('order_items').select('order_id,product_name_snapshot,quantity,unit_price,line_total').in('order_id',orderIds);if(result.error){this.busy=false;w.close();this.notify('تعذر قراءة أصناف الأوردرات؛ لم يتم الإقفال. '+result.error.message,'error');return}items=result.data||[]}
+      const {data,error}=await supabase.rpc('close_staff_shift',{p_shift_id:shift.id,p_counted_cash:counted,p_note:this.shiftNote||null})
       this.busy=false
-      if(error){this.notify('تعذر إقفال الشيفت: '+error.message,'error');return}
-      this.lastShiftReport=data;this.currentShift=null;this.notify('تم إقفال الشيفت وحفظ التسوية. اضغط طباعة التقرير عند الحاجة');await this.loadShiftData()
+      if(error){w.close();this.notify('تعذر إقفال الشيفت: '+error.message,'error');return}
+      this.lastShiftReport=data;this.currentShift=null
+      const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))
+      const money=v=>this.money(v)+' ج'
+      const orderRows=(orders||[]).map(o=>{const lines=items.filter(i=>i.order_id===o.id).map(i=>'<li>'+esc(i.product_name_snapshot)+' × '+esc(i.quantity)+' — '+money(i.line_total)+'</li>').join('');return '<tr><td>#'+esc(o.order_number)+'<br><small>'+esc(this.formatDate(o.created_at))+'</small></td><td>'+ (o.order_type==='delivery'?'دليفري':'صالة')+'<br><small>'+esc(o.status==='cancelled'?'ملغي':'')+'</small></td><td><ul>'+lines+'</ul></td><td>'+money(o.total)+'</td></tr>'}).join('')
+      const expenseRows=(expenses||[]).map(x=>'<tr><td>'+esc(x.reason)+'</td><td>'+esc(x.payee_name||'—')+'</td><td>'+money(x.amount)+'</td></tr>').join('')
+      const r=data
+      w.document.open();w.document.write('<html dir="rtl"><meta charset="utf-8"><title>كشف إقفال الشيفت</title><style>body{font-family:Arial,sans-serif;padding:18px;color:#222}h2,h3{text-align:center}table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px}th,td{border:1px solid #bbb;padding:7px;text-align:right;vertical-align:top}ul{margin:0;padding-right:16px}li{margin:4px 0}.totals p{margin:7px 0}.total{font-size:18px;font-weight:bold;border-top:2px solid #222;padding-top:10px}@media print{body{padding:0}}</style><h2>سومر — كشف تصفية وإقفال الشيفت</h2><p>الموظف: '+esc(this.profile.display_name||'')+'</p><p>من: '+esc(this.formatDate(shift.opened_at))+' إلى: '+esc(this.formatDate(r.shift?.closed_at||new Date().toISOString()))+'</p><p>عدد الأوردرات: '+(orders||[]).length+'</p><h3>تفاصيل الأوردرات</h3><table><thead><tr><th>الأوردر / الوقت</th><th>النوع / الحالة</th><th>الأصناف</th><th>الإجمالي</th></tr></thead><tbody>'+ (orderRows||'<tr><td colspan="4">لا توجد أوردرات</td></tr>')+'</tbody></table><h3>المصروفات</h3><table><thead><tr><th>السبب</th><th>المستلم</th><th>المبلغ</th></tr></thead><tbody>'+ (expenseRows||'<tr><td colspan="3">لا توجد مصروفات</td></tr>')+'</tbody></table><div class="totals"><p>إجمالي المبيعات (غير الملغاة): '+money(r.sales_total)+'</p><p>إجمالي الخصومات: '+money(r.discounts_total)+'</p><p>المقبوضات النقدية: '+money(r.cash_sales_total)+'</p><p>المصروفات: '+money(r.expenses_total)+'</p><p>السحوبات والمرتجعات: '+money(r.cash_out_total)+'</p><p>عهدة بداية الشيفت: '+money(shift.opening_cash)+'</p><p>النقدية المتوقعة بالدرج: '+money(r.cash_expected)+'</p><p>النقدية المعدودة: '+money(r.cash_counted)+'</p><p class="total">العجز / الزيادة: '+money(r.difference)+'</p></div><script>window.onload=()=>window.print()<\\/script></html>');w.document.close()
+      this.notify('تم إقفال الشيفت وحفظ التسوية وفتح كشف الطباعة تلقائيًا');await this.loadShiftData()
     },
     printShiftReport () {
       if(!this.lastShiftReport)return
@@ -634,9 +655,29 @@ export default {
     },
     async deleteRecipe(recipe){
       if(!this.isAdmin)return
+      if(!window.confirm('هل تريد حذف مكون الوصفة هذا؟'))return
       const {error}=await supabase.from('product_recipes').delete().eq('id',recipe.id)
       if(error){this.notify('تعذر حذف المكون: '+error.message,'error');return}
       await this.loadInventory();this.notify('تم حذف مكون الوصفة')
+    },
+    async deleteInventoryItem(item){
+      if(!this.isAdmin||!item?.id)return
+      const [{count:recipeCount,error:recipeError},{count:movementCount,error:movementError}]=await Promise.all([
+        supabase.from('product_recipes').select('id',{count:'exact',head:true}).eq('inventory_item_id',item.id),
+        supabase.from('stock_movements').select('id',{count:'exact',head:true}).eq('inventory_item_id',item.id)
+      ])
+      if(recipeError||movementError){this.notify('تعذر التحقق من ارتباطات الخامة؛ لم يتم حذف أي بيانات.','error');return}
+      if((recipeCount||0)>0||(movementCount||0)>0){
+        this.notify('لا يمكن حذف هذه الخامة نهائيًا لأنها مرتبطة بوصفات أو حركات مخزون. احذف ارتباطات الوصفات أولًا؛ وسجل الحركات محفوظ للمراجعة.','error');return
+      }
+      if(!window.confirm('تأكيد الحذف النهائي للخامة: '+item.display_name+'؟ لا يمكن التراجع عن الحذف.'))return
+      this.busy=true
+      const {error}=await supabase.from('inventory_items').delete().eq('id',item.id)
+      this.busy=false
+      if(error){this.notify('تعذر حذف الخامة: '+error.message,'error');return}
+      if(this.editingInventoryId===item.id){this.editingInventoryId=null;this.inventoryDraft={display_name:'',item_type:'other',unit:'كجم',min_quantity:0}}
+      if(this.stockDraft.inventory_item_id===item.id)this.stockDraft.inventory_item_id=''
+      await this.loadInventory();this.notify('تم حذف الخامة نهائيًا')
     },
     go (page) {
       if (['dashboard', 'products', 'inventory', 'staff'].includes(page) && (!this.isAdmin || !this.adminUnlocked)) return
