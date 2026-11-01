@@ -561,7 +561,7 @@ export default {
       this.busy=false
       if(error){w.close();this.notify('تعذر إقفال الشيفت: '+error.message,'error');return}
       this.lastShiftReport=data;this.currentShift=null
-      const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))
+      const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;')
       const money=v=>this.money(v)+' ج'
       const orderRows=(orders||[]).map(o=>{const lines=items.filter(i=>i.order_id===o.id).map(i=>'<li>'+esc(i.product_name_snapshot)+' × '+esc(i.quantity)+' — '+money(i.line_total)+'</li>').join('');return '<tr><td>#'+esc(o.order_number)+'<br><small>'+esc(this.formatDate(o.created_at))+'</small></td><td>'+ (o.order_type==='delivery'?'دليفري':'صالة')+'<br><small>'+esc(o.status==='cancelled'?'ملغي':'')+'</small></td><td><ul>'+lines+'</ul></td><td>'+money(o.total)+'</td></tr>'}).join('')
       const expenseRows=(expenses||[]).map(x=>'<tr><td>'+esc(x.reason)+'</td><td>'+esc(x.payee_name||'—')+'</td><td>'+money(x.amount)+'</td></tr>').join('')
